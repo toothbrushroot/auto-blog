@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="10 Docker commands every developer should know — from basic container management to advanced debugging">
+<title>10 Docker Commands Every Developer Should Know in 2026 - DevOpsDaily</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.8;font-size:1.05rem}
+.container{max-width:750px;margin:0 auto;padding:2rem 1rem}
+nav{margin-bottom:1rem}
+nav a{color:#58a6ff;text-decoration:none;font-size:.9rem}
+h1{font-size:2rem;color:#f0f6fc;margin:.5rem 0 1.5rem;line-height:1.3}
+.date{color:#8b949e;font-size:.9rem;margin-bottom:2rem}
+article h2{color:#f0f6fc;font-size:1.4rem;margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid #21262d}
+article p{margin-bottom:1rem;color:#b1bac4}
+article code{background:#21262d;padding:.15rem .4rem;border-radius:3px;font-size:.9rem;color:#ffa657}
+article pre{background:#161b22;border:1px solid #21262d;border-radius:6px;padding:1rem;overflow-x:auto;margin-bottom:1.5rem}
+article pre code{background:none;padding:0;color:#c9d1d9}
+article a{color:#58a6ff}
+article ul,article ol{margin:0 0 1rem 1.5rem;color:#b1bac4}
+article li{margin-bottom:.3rem}
+footer{text-align:center;padding:2rem;color:#484f58;font-size:.85rem;border-top:1px solid #21262d;margin-top:3rem}
+footer a{color:#484f58}
+</style>
+</head>
+<body>
+<div class="container">
+<nav><a href="../index.html">← Back to DevOpsDaily</a></nav>
+<h1>10 Docker Commands Every Developer Should Know in 2026</h1>
+<div class="date">July 17, 2026 · 5 min read</div>
+<article>
+<p>Docker has been around for a decade, yet most developers still use the same 3 commands. Here are 10 commands that will make you faster, fix production issues quicker, and actually understand what's happening inside your containers.</p>
+
+<h2>1. docker exec -it — Your Debug Entry Point</h2>
+<p>The classic. But most people don't use it right. Always specify the shell explicitly:</p>
+<pre><code>docker exec -it my-container /bin/bash
+# Alpine containers don't have bash:
+docker exec -it my-container /bin/sh</code></pre>
+<p>Bonus: pipe commands directly without entering the container:</p>
+<pre><code>docker exec my-container cat /etc/nginx/nginx.conf</code></pre>
+
+<h2>2. docker logs — Read the Room</h2>
+<p>Don't SSH into a container to read logs. Use the tools built for it:</p>
+<pre><code>docker logs --tail 100 -f my-container   # last 100 lines, follow
+docker logs --since 10m my-container       # last 10 minutes
+docker logs --timestamps my-container      # show when each line happened</code></pre>
+
+<h2>3. docker system df — Where Did My Disk Go?</h2>
+<p>This single command tells you exactly how much space Docker is eating:</p>
+<pre><code>docker system df
+# TYPE           TOTAL   ACTIVE   SIZE    RECLAIMABLE
+# Images         12      5        2.3GB   1.1GB (47%)
+# Containers     8       3        150MB   90MB (60%)
+# Volumes        4       2        500MB   200MB (40%)</code></pre>
+<p>Follow up with <code>docker system prune -a</code> when you need to clean house. The <code>-a</code> flag also removes unused images, not just dangling ones.</p>
+
+<h2>4. docker inspect — The Truth Is in the JSON</h2>
+<p>Every Docker object has a complete JSON manifest. <code>inspect</code> reveals it. Use Go templates to extract exactly what you need:</p>
+<pre><code>docker inspect -f '{{.NetworkSettings.IPAddress}}' my-container
+docker inspect -f '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{println}}{{end}}' my-container
+docker inspect -f '{{.State.StartedAt}}' my-container</code></pre>
+
+<h2>5. docker stats — Real-Time Resource Monitor</h2>
+<p>Like <code>top</code> but for containers. Shows CPU, memory, network, and disk I/O — live:</p>
+<pre><code>docker stats --no-stream          # snapshot
+docker stats --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}"</code></pre>
+<p>If a container is using 2GB of RAM but your app only needs 200MB, you'll spot it here.</p>
+
+<h2>6. docker history — What's Actually In That Image?</h2>
+<p>Before pulling a 1.5GB image from Docker Hub, check what's inside:</p>
+<pre><code>docker history node:20-alpine
+# IMAGE          CREATED       SIZE    COMMENT
+# abc123         2 days ago    5.6MB   /bin/sh -c apk add --no-cache ...
+# def456         2 days ago    112MB   /bin/sh -c mkdir /app</code></pre>
+<p>This shows every layer and its size. You'll often find 500MB of build dependencies that should've been cleaned up in the Dockerfile.</p>
+
+<h2>7. docker cp — Move Files In and Out</h2>
+<p>No need to mount volumes for one-off file transfers:</p>
+<pre><code>docker cp ./config.json my-container:/app/config.json     # host → container
+docker cp my-container:/var/log/app.log ./app.log          # container → host</code></pre>
+
+<h2>8. docker commit — Snapshot a Running Container</h2>
+<p>Made changes inside a container and want to save them as an image? Don't rebuild — snapshot it:</p>
+<pre><code>docker commit my-container my-debug-image:v1</code></pre>
+<p>Useful for debugging, but don't build production images this way. It captures everything including temp files and secrets.</p>
+
+<h2>9. docker network — See Who's Talking to Whom</h2>
+<pre><code>docker network ls                          # list all networks
+docker network inspect bridge              # see connected containers
+docker network create --driver bridge my-net  # custom network</code></pre>
+<p>Containers on the same custom network can resolve each other by name. No more hardcoding IPs.</p>
+
+<h2>10. docker events — Watch Everything Happen</h2>
+<p>Real-time stream of every Docker event — container starts, stops, health checks, image pulls:</p>
+<pre><code>docker events --since 5m
+docker events --filter 'event=die' --filter 'container=my-app'</code></pre>
+<p>Pipe this into your monitoring stack. When a container unexpectedly dies at 3 AM, you'll know exactly when.</p>
+
+<h2>Bottom Line</h2>
+<p>You don't need to memorize all 10. Start with <code>inspect</code> and <code>system df</code> — you'll use them weekly. Add <code>logs --since</code> for production debugging and <code>events</code> for monitoring. The rest will become muscle memory over time.</p>
+<p>The gap between "I use Docker" and "I understand Docker" is exactly these 10 commands.</p>
+</article>
+<footer><p>© 2026 DevOpsDaily · <a href="../index.html">Home</a></p></footer>
+</div>
+</body>
+</html>
