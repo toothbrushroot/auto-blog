@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://toothbrushroot.github.io/auto-blog/sitemap.xml
