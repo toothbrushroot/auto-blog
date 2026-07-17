@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="5 advanced Git commands that separate senior developers from juniors">
+<title>5 Git Tricks That Make You Look Like a Senior Dev - DevOpsDaily</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.8;font-size:1.05rem}
+.container{max-width:750px;margin:0 auto;padding:2rem 1rem}
+nav{margin-bottom:1rem}
+nav a{color:#58a6ff;text-decoration:none;font-size:.9rem}
+h1{font-size:2rem;color:#f0f6fc;margin:.5rem 0 1.5rem;line-height:1.3}
+.date{color:#8b949e;font-size:.9rem;margin-bottom:2rem}
+article h2{color:#f0f6fc;font-size:1.4rem;margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid #21262d}
+article p{margin-bottom:1rem;color:#b1bac4}
+article code{background:#21262d;padding:.15rem .4rem;border-radius:3px;font-size:.9rem;color:#ffa657}
+article pre{background:#161b22;border:1px solid #21262d;border-radius:6px;padding:1rem;overflow-x:auto;margin-bottom:1.5rem}
+article pre code{background:none;padding:0;color:#c9d1d9}
+article a{color:#58a6ff}
+article ul{margin:0 0 1rem 1.5rem;color:#b1bac4}
+article li{margin-bottom:.3rem}
+footer{text-align:center;padding:2rem;color:#484f58;font-size:.85rem;border-top:1px solid #21262d;margin-top:3rem}
+footer a{color:#484f58}
+</style>
+</head>
+<body>
+<div class="container">
+<nav><a href="../index.html">← Back to DevOpsDaily</a></nav>
+<h1>5 Git Tricks That Make You Look Like a Senior Dev</h1>
+<div class="date">July 17, 2026 · 4 min read</div>
+<article>
+<p>Most developers use about 20% of Git's power. These 5 commands are the other 80%. Master them and you'll solve problems in seconds that others spend hours on.</p>
+
+<h2>1. Interactive Rebase — Clean Commit History</h2>
+<p>Never push a messy branch again. Interactive rebase lets you squash, reorder, and edit commits before anyone sees them.</p>
+<pre><code>git rebase -i HEAD~4</code></pre>
+<p>This opens an editor with your last 4 commits. Change <code>pick</code> to <code>squash</code> to combine commits, or <code>reword</code> to fix a message. Your PR reviewer will thank you.</p>
+
+<h2>2. Git Bisect — Find the Bug in O(log n)</h2>
+<p>A bug was introduced sometime in the last 100 commits. Instead of checking them one by one, let Git binary-search for you:</p>
+<pre><code>git bisect start
+git bisect bad HEAD        # current state is broken
+git bisect good v1.0.0     # last known good state</code></pre>
+<p>Git checks out a commit in the middle. Test it, mark it <code>git bisect good</code> or <code>git bisect bad</code>. In 7 steps, you'll find the exact commit among 100. Then <code>git bisect reset</code> to return.</p>
+
+<h2>3. Worktrees — Work on Two Branches Simultaneously</h2>
+<p>Need to switch branches but don't want to stash your changes? Worktrees let you check out multiple branches into separate directories — all from one repo.</p>
+<pre><code>git worktree add ../feature-branch feature-branch</code></pre>
+<p>Now you have two working directories: your current one and <code>../feature-branch</code>. Make changes in either, they share the same <code>.git</code> folder. Perfect for hotfixes while deep in a feature.</p>
+
+<h2>4. Reflog — Your Undo Safety Net</h2>
+<p>Accidentally deleted a branch? Force-pushed the wrong thing? <code>git reflog</code> shows every action Git has taken in the last 90 days:</p>
+<pre><code>git reflog
+# abc1234 HEAD@{0}: commit: fix login bug
+# def5678 HEAD@{1}: reset: moving to HEAD~3
+# ghi9012 HEAD@{2}: commit: add payment feature</code></pre>
+<p>Find the commit you lost and do <code>git checkout ghi9012</code> to recover it. The reflog has saved more careers than any StackOverflow answer.</p>
+
+<h2>5. Partial Staging — Commit Specific Lines</h2>
+<p>You made 5 changes in one file but only want to commit 2 of them. Don't copy-paste into a new file. Use interactive staging:</p>
+<pre><code>git add -p</code></pre>
+<p>Git shows each chunk and asks what to do. Press <code>y</code> to stage it, <code>n</code> to skip, or <code>s</code> to split a large chunk into smaller ones. Commit exactly what you mean to commit.</p>
+
+<h2>Bottom Line</h2>
+<p>Start with <code>git add -p</code> and <code>git reflog</code> — you'll use those weekly. Then add <code>rebase -i</code> for your next PR. Bisect and worktrees are your secret weapons for the tough debugging sessions.</p>
+<p>Senior developers don't memorize more commands. They know fewer commands that solve problems faster.</p>
+</article>
+<footer><p>© 2026 DevOpsDaily · <a href="../index.html">Home</a></p></footer>
+</div>
+</body>
+</html>
