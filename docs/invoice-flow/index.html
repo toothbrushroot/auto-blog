@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Forward your invoices to us. We parse them and enter them into QuickBooks automatically. No typing, no scanning, no data entry.">
+<meta property="og:title" content="InvoiceFlow — Auto-pilot Your QuickBooks Invoices">
+<meta property="og:description" content="Forward an invoice email. We handle the rest. QuickBooks integration, zero data entry.">
+<meta property="og:type" content="website">
+<title>InvoiceFlow — Forward Invoices. Done.</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0d1117;
+    color: #c9d1d9;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+  .container { max-width: 720px; margin: 0 auto; padding: 40px 20px; }
+  .hero { padding: 80px 0 40px; text-align: center; }
+  .badge {
+    display: inline-block;
+    background: #1f6feb22;
+    color: #58a6ff;
+    border: 1px solid #1f6feb44;
+    border-radius: 20px;
+    padding: 4px 16px;
+    font-size: 14px;
+    margin-bottom: 24px;
+  }
+  h1 {
+    font-size: 42px;
+    font-weight: 800;
+    color: #f0f6fc;
+    margin-bottom: 16px;
+    line-height: 1.2;
+  }
+  .subtitle {
+    font-size: 20px;
+    color: #8b949e;
+    margin-bottom: 40px;
+    max-width: 560px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .waitlist-form {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .waitlist-form input {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 14px 20px;
+    font-size: 16px;
+    color: #f0f6fc;
+    min-width: 300px;
+    outline: none;
+    transition: border-color .2s;
+  }
+  .waitlist-form input:focus { border-color: #58a6ff; }
+  .waitlist-form button {
+    background: #238636;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 14px 32px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .2s;
+  }
+  .waitlist-form button:hover { background: #2ea043; }
+  .hint { color: #484f58; font-size: 13px; }
+  .steps { padding: 60px 0; }
+  .steps h2 {
+    text-align: center;
+    font-size: 28px;
+    color: #f0f6fc;
+    margin-bottom: 40px;
+  }
+  .step-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 24px;
+  }
+  .step-card {
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 12px;
+    padding: 28px 24px;
+    text-align: center;
+  }
+  .step-num {
+    display: inline-block;
+    width: 40px;
+    height: 40px;
+    line-height: 40px;
+    background: #1f6feb;
+    color: white;
+    border-radius: 50%;
+    font-weight: 700;
+    font-size: 18px;
+    margin-bottom: 16px;
+  }
+  .step-card h3 { color: #f0f6fc; font-size: 16px; margin-bottom: 8px; }
+  .step-card p { color: #8b949e; font-size: 14px; }
+  .features { padding: 40px 0 60px; }
+  .features h2 {
+    text-align: center;
+    font-size: 28px;
+    color: #f0f6fc;
+    margin-bottom: 32px;
+  }
+  .feature-list {
+    max-width: 500px;
+    margin: 0 auto;
+  }
+  .feature-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .feature-item .icon { color: #3fb950; font-size: 20px; flex-shrink: 0; }
+  .feature-item strong { display: block; color: #f0f6fc; margin-bottom: 2px; }
+  .feature-item span { color: #8b949e; font-size: 14px; }
+  .pricing {
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 12px;
+    padding: 32px;
+    max-width: 400px;
+    margin: 0 auto 60px;
+    text-align: center;
+  }
+  .pricing .price { font-size: 42px; font-weight: 800; color: #f0f6fc; }
+  .pricing .period { color: #8b949e; margin-bottom: 24px; }
+  .pricing .includes { color: #8b949e; font-size: 14px; }
+  footer {
+    text-align: center;
+    color: #484f58;
+    font-size: 13px;
+    padding: 40px 0;
+  }
+  footer a { color: #58a6ff; text-decoration: none; }
+  @media (max-width: 500px) {
+    h1 { font-size: 28px; }
+    .waitlist-form { flex-direction: column; align-items: center; }
+    .waitlist-form input { min-width: auto; width: 100%; }
+    .waitlist-form button { width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="hero">
+    <div class="badge">🚀 Coming Soon — Join the Waitlist</div>
+    <h1>Forward Your Invoices.<br>We'll Handle QuickBooks.</h1>
+    <p class="subtitle">
+      Tired of typing invoice data into QuickBooks by hand? Forward the email to us.
+      We extract the numbers and enter them for you. Automatically.
+    </p>
+    <form class="waitlist-form" action="https://formspree.io/f/your-form-id" method="POST">
+      <input type="email" name="email" placeholder="Your email address" required>
+      <button type="submit">Get Early Access</button>
+    </form>
+    <p class="hint">No spam. One email when we launch. Free trial for early birds.</p>
+  </div>
+
+  <div class="steps">
+    <h2>How It Works</h2>
+    <div class="step-grid">
+      <div class="step-card">
+        <div class="step-num">1</div>
+        <h3>Forward Your Invoice</h3>
+        <p>Got an email with an invoice attached? Forward it to your personal InvoiceFlow address.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-num">2</div>
+        <h3>We Parse Everything</h3>
+        <p>Our AI reads the PDF, extracts vendor name, amount, date, and line items. Accuracy verified.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-num">3</div>
+        <h3>Synced to QuickBooks</h3>
+        <p>The invoice appears in your QuickBooks account. Categorized, dated, and ready. You get a confirmation.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="features">
+    <h2>Why InvoiceFlow?</h2>
+    <div class="feature-list">
+      <div class="feature-item">
+        <span class="icon">✓</span>
+        <div><strong>Zero data entry</strong><span>Forward the email and forget it. We do the rest.</span></div>
+      </div>
+      <div class="feature-item">
+        <span class="icon">✓</span>
+        <div><strong>Works with any invoice format</strong><span>PDF, image, or embedded in email — we handle all of them.</span></div>
+      </div>
+      <div class="feature-item">
+        <span class="icon">✓</span>
+        <div><strong>QuickBooks Online integration</strong><span>Direct sync. No CSV export. No copy-paste. Just done.</span></div>
+      </div>
+      <div class="feature-item">
+        <span class="icon">✓</span>
+        <div><strong>Error detection</strong><span>If something looks off, we flag it before it hits your books.</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pricing">
+    <div class="price">$29<span style="font-size:18px;color:#8b949e">/month</span></div>
+    <p class="period">Unlimited invoices. Cancel anytime.</p>
+    <p class="includes">✓ Free 14-day trial<br>✓ No credit card required</p>
+  </div>
+
+  <div style="text-align:center;padding-bottom:40px;">
+    <h2 style="color:#f0f6fc;margin-bottom:16px;">Ready to stop typing invoices?</h2>
+    <p style="color:#8b949e;margin-bottom:24px;">Join the waitlist. Early birds get 50% off for life.</p>
+    <form class="waitlist-form" action="https://formspree.io/f/your-form-id" method="POST">
+      <input type="email" name="email" placeholder="Your email address" required>
+      <button type="submit">Get Early Access</button>
+    </form>
+  </div>
+
+  <footer>
+    <p>InvoiceFlow &copy; 2026 — Built for frustrated QuickBooks users everywhere.</p>
+    <p style="margin-top:8px"><a href="/auto-blog/">← Back to DevOpsDaily Blog</a></p>
+  </footer>
+</div>
+
+</body>
+</html>
