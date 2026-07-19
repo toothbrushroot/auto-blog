@@ -6,6 +6,11 @@
     <priority>1.0</priority>
   </url>
   <url>
+    <loc>https://toothbrushroot.github.io/auto-blog/posts/github-actions-ci-cd-pipeline.html</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://toothbrushroot.github.io/auto-blog/posts/modern-cli-tools-2026.html</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
