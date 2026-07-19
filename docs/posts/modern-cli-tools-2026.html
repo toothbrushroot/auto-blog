@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="8 modern command-line tools that replace grep, find, cat, ls and cd — ripgrep, fd, bat, eza, zoxide, fzf, jq and delta, with real usage examples and install commands.">
+<title>The Modern CLI Toolbox: 8 Tools That Replace grep, find, cat, and cd - DevOpsDaily</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.8;font-size:1.05rem}
+.container{max-width:750px;margin:0 auto;padding:2rem 1rem}
+nav{margin-bottom:1rem}
+nav a{color:#58a6ff;text-decoration:none;font-size:.9rem}
+h1{font-size:2rem;color:#f0f6fc;margin:.5rem 0 1.5rem;line-height:1.3}
+.date{color:#8b949e;font-size:.9rem;margin-bottom:2rem}
+article h2{color:#f0f6fc;font-size:1.4rem;margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid #21262d}
+article p{margin-bottom:1rem;color:#b1bac4}
+article code{background:#21262d;padding:.15rem .4rem;border-radius:3px;font-size:.9rem;color:#ffa657}
+article pre{background:#161b22;border:1px solid #21262d;border-radius:6px;padding:1rem;overflow-x:auto;margin-bottom:1.5rem}
+article pre code{background:none;padding:0;color:#c9d1d9}
+article a{color:#58a6ff}
+article ul{margin:0 0 1rem 1.5rem;color:#b1bac4}
+article li{margin-bottom:.3rem}
+footer{text-align:center;padding:2rem;color:#484f58;font-size:.85rem;border-top:1px solid #21262d;margin-top:3rem}
+footer a{color:#484f58}
+</style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "The Modern CLI Toolbox: 8 Tools That Replace grep, find, cat, and cd",
+  "description": "ripgrep, fd, bat, eza, zoxide, fzf, jq and delta — the modern command-line replacements that are faster, saner, and respect your .gitignore.",
+  "datePublished": "2026-07-19",
+  "dateModified": "2026-07-19",
+  "author": {"@type": "Organization", "name": "DevOpsDaily"},
+  "publisher": {"@type": "Organization", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"},
+  "url": "https://toothbrushroot.github.io/auto-blog/posts/modern-cli-tools-2026.html",
+  "isPartOf": {"@type": "Blog", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"}
+}
+</script>
+<meta property="og:title" content="The Modern CLI Toolbox: 8 Tools That Replace grep, find, cat, and cd">
+<meta property="og:description" content="ripgrep, fd, bat, eza, zoxide, fzf, jq and delta — faster, saner command-line tools every developer should install.">
+<meta property="og:url" content="https://toothbrushroot.github.io/auto-blog/posts/modern-cli-tools-2026.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="DevOpsDaily">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="The Modern CLI Toolbox: 8 Tools That Replace grep, find, cat, and cd">
+<meta name="twitter:description" content="ripgrep, fd, bat, eza, zoxide, fzf, jq and delta — faster, saner command-line tools every developer should install.">
+<link rel="canonical" href="https://toothbrushroot.github.io/auto-blog/posts/modern-cli-tools-2026.html">
+</head>
+<body>
+<div class="container">
+<nav><a href="../index.html">← Back to DevOpsDaily</a></nav>
+<h1>The Modern CLI Toolbox: 8 Tools That Replace grep, find, cat, and cd</h1>
+<div class="date">July 19, 2026 · 6 min read</div>
+<article>
+<p>The core Unix tools were designed in the 1970s for teletypes and kilobytes of RAM. They still work — but a generation of rewrites (mostly in Rust, a few in Go) has quietly fixed their worst UX problems: cryptic flags, no awareness of <code>.gitignore</code>, and output that assumes you enjoy parsing monochrome walls of text.</p>
+<p>Here are the 8 replacements I actually use daily, with the exact commands that made me switch.</p>
+
+<h2>1. ripgrep (rg) — replaces grep</h2>
+<p>ripgrep searches recursively by default, respects your <code>.gitignore</code>, skips binary files, and is genuinely 5–50x faster than GNU grep on real codebases. The flags you'll actually use:</p>
+<pre><code>rg "handleWebhook"          # search everywhere, respects .gitignore
+rg -i "error"               # case insensitive
+rg -S "UserID"              # smart case: insensitive unless you type a capital
+rg -l "TODO"                # just list files with matches
+rg -C 3 "panic"             # 3 lines of context around each hit
+rg --files -g "*.py"        # list all Python files it would search</code></pre>
+<p>The killer detail: <code>rg "foo"</code> in a repo already excludes <code>node_modules</code>, <code>target/</code>, and whatever else you've gitignored. With grep you've been typing <code>--exclude-dir</code> chains for years. That alone is worth the switch.</p>
+
+<h2>2. fd — replaces find</h2>
+<p>Nobody should have to remember <code>find . -name "*.log" -mtime +30 -exec rm {} \;</code>. fd's syntax is what find's should have been:</p>
+<pre><code>fd report              # find files/dirs matching "report" (regex, recursive)
+fd -e log              # by extension
+fd -t d node_modules   # directories only
+fd -x rm               # run rm on every match
+fd changed -d 3        # match "changed", max depth 3</code></pre>
+<p>Like ripgrep, it respects <code>.gitignore</code> and is dramatically faster on large trees. One gotcha: on Debian/Ubuntu the package is <code>fd-find</code> and the binary is <code>fdfind</code> — alias it in your shell rc: <code>alias fd=fdfind</code>.</p>
+
+<h2>3. bat — replaces cat</h2>
+<p>bat adds syntax highlighting, line numbers, and a Git gutter (showing modified lines) to file viewing:</p>
+<pre><code>bat src/main.go        # highlighted, numbered, paged
+bat --plain deploy.sh  # plain output, safe for piping
+bat -r 40:60 app.py    # show only lines 40-60</code></pre>
+<p>It pages through <code>less</code> automatically when output is long, and passes through cleanly when piped — so aliasing <code>alias cat=bat</code> is safe for interactive use (keep real <code>cat</code> in scripts).</p>
+
+<h2>4. eza — replaces ls</h2>
+<p>exa was the popular modern <code>ls</code>, but the project went unmaintained and its repo was archived. <strong>eza</strong> is the actively maintained community fork — install that one, not exa.</p>
+<pre><code>eza -l --git --icons        # long view with git status per file
+eza --tree -L 2             # tree view, 2 levels deep
+eza -l --sort=modified      # sort by modification time</code></pre>
+<p>The <code>--git</code> column showing staged/modified status next to each filename is the feature that makes plain <code>ls -la</code> feel broken afterward.</p>
+
+<h2>5. zoxide — replaces cd</h2>
+<p>zoxide learns which directories you visit and lets you jump with fragments instead of paths. After a day of use:</p>
+<pre><code>z auto        # jumps to /tmp/auto-blog (your most "frecent" match)
+z blog docs   # matches paths containing both
+zi            # interactive picker (uses fzf)</code></pre>
+<p>Setup is one line in your <code>.zshrc</code> or <code>.bashrc</code>:</p>
+<pre><code>eval "$(zoxide init zsh)"</code></pre>
+<p>"Frecent" = frequency + recency. The directory you edited ten minutes ago outranks one you visited heavily last month. It sounds like a gimmick until you realize you've stopped typing full paths entirely.</p>
+
+<h2>6. fzf — fuzzy-finds everything</h2>
+<p>fzf isn't a replacement for one tool — it's an interactive filter you wire into your whole shell. The three bindings that change your life (installed via the package's install script):</p>
+<ul>
+<li><code>Ctrl-R</code> — fuzzy-search your shell history. Type a fragment of a command you ran last week, hit enter. This alone ends the <code>history | grep</code> era.</li>
+<li><code>Ctrl-T</code> — fuzzy-find files and paste the path into your current command line.</li>
+<li><code>Alt-C</code> — fuzzy-jump into a subdirectory.</li>
+</ul>
+<p>And the composition pattern is endless:</p>
+<pre><code>vim $(fzf)                       # pick a file, open it
+git checkout $(git branch | fzf) # pick a branch, check it out
+kill $(ps aux | fzf | awk '{print $2}')</code></pre>
+<p>Unlike most of this list, fzf is written in Go (by Junegunn Choi) — proof the ecosystem isn't a monoculture.</p>
+
+<h2>7. jq — JSON without tears</h2>
+<p>Every API, CI system, and cloud CLI speaks JSON. jq is how you answer questions without writing a Python script:</p>
+<pre><code>curl -s api.example.com/users | jq '.users[].email'
+kubectl get pods -o json | jq '.items[] | select(.status.phase=="Failed") | .metadata.name'
+jq -r '.dependencies | keys[]' package.json   # raw output, no quotes</code></pre>
+<p>Learning curve tip: master just three things — <code>.key</code>, <code>.[]</code>, and <code>select()</code>. That covers 90% of daily use. The <code>-r</code> (raw) flag matters more than people expect; without it you're <code>sed</code>-ing quotes off strings forever.</p>
+
+<h2>8. delta — replaces git's default diff pager</h2>
+<p>delta renders <code>git diff</code> and <code>git show</code> with syntax highlighting, line numbers, and optional side-by-side view. Configure once in <code>~/.gitconfig</code>:</p>
+<pre><code>[core]
+    pager = delta
+[interactive]
+    diffFilter = delta --color-only
+[delta]
+    line-numbers = true
+    side-by-side = true</code></pre>
+<p>Every diff you read from then on — including inside <code>git add -p</code> — is highlighted and numbered. Code review in the terminal stops being eye strain.</p>
+
+<h2>Install everything in one line</h2>
+<pre><code># macOS
+brew install ripgrep fd bat eza zoxide fzf jq git-delta
+
+# Debian/Ubuntu (note the renamed binaries)
+sudo apt install ripgrep fd-find bat jq fzf
+# eza, zoxide and delta: use cargo install, or their .deb releases</code></pre>
+
+<h2>Bottom Line</h2>
+<p>Don't install all eight at once — you'll remember none of them. Start with <strong>ripgrep</strong> and <strong>fzf's Ctrl-R</strong>; they'll pay rent within an hour. Add <strong>zoxide</strong> next week. By the time you wire in delta, the 1970s toolchain will feel like a museum exhibit.</p>
+<p>The pattern behind all of these isn't speed — it's defaults. They assume you're in a Git repo, on a color terminal, in 2026. The classics assume a teletype. Pick accordingly.</p>
+</article>
+<footer><p>© 2026 DevOpsDaily · <a href="../index.html">Home</a></p></footer>
+</div>
+</body>
+</html>
