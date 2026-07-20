@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A practical guide to Linux performance troubleshooting — the 60-second check, CPU, memory, disk I/O, network analysis, and the tools every DevOps engineer needs (top, vmstat, iostat, ss, perf).">
+<title>Linux Performance Troubleshooting: The 60-Second Check and Beyond - DevOpsDaily</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.8;font-size:1.05rem}
+.container{max-width:750px;margin:0 auto;padding:2rem 1rem}
+nav{margin-bottom:1rem}
+nav a{color:#58a6ff;text-decoration:none;font-size:.9rem}
+h1{font-size:2rem;color:#f0f6fc;margin:.5rem 0 1.5rem;line-height:1.3}
+.date{color:#8b949e;font-size:.9rem;margin-bottom:2rem}
+article h2{color:#f0f6fc;font-size:1.4rem;margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid #21262d}
+article h3{color:#f0f6fc;font-size:1.15rem;margin:1.5rem 0 .5rem}
+article p{margin-bottom:1rem;color:#b1bac4}
+article code{background:#21262d;padding:.15rem .4rem;border-radius:3px;font-size:.9rem;color:#ffa657}
+article pre{background:#161b22;border:1px solid #21262d;border-radius:6px;padding:1rem;overflow-x:auto;margin-bottom:1.5rem;font-size:.9rem}
+article pre code{background:none;padding:0;color:#c9d1d9}
+article a{color:#58a6ff}
+article ul,article ol{margin:0 0 1rem 1.5rem;color:#b1bac4}
+article li{margin-bottom:.3rem}
+article blockquote{border-left:3px solid #30363d;padding:.5rem 1rem;margin:0 0 1rem;color:#8b949e;background:#161b22;border-radius:0 6px 6px 0}
+article table{width:100%;border-collapse:collapse;margin-bottom:1.5rem}
+article th,article td{border:1px solid #21262d;padding:.5rem .75rem;text-align:left;color:#b1bac4}
+article th{background:#161b22;color:#f0f6fc}
+footer{text-align:center;padding:2rem;color:#484f58;font-size:.85rem;border-top:1px solid #21262d;margin-top:3rem}
+footer a{color:#484f58}
+</style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Linux Performance Troubleshooting: The 60-Second Check and Beyond",
+  "description": "A practical guide to Linux performance troubleshooting — the 60-second check, CPU, memory, disk I/O, network analysis, and the tools every DevOps engineer needs.",
+  "datePublished": "2026-07-20",
+  "dateModified": "2026-07-20",
+  "author": {"@type": "Organization", "name": "DevOpsDaily"},
+  "publisher": {"@type": "Organization", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"},
+  "url": "https://toothbrushroot.github.io/auto-blog/posts/linux-performance-troubleshooting.html",
+  "isPartOf": {"@type": "Blog", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"}
+}
+</script>
+<meta property="og:title" content="Linux Performance Troubleshooting: The 60-Second Check and Beyond">
+<meta property="og:description" content="A practical guide to Linux performance troubleshooting — the 60-second check, CPU, memory, disk I/O, network analysis, and the tools every DevOps engineer needs.">
+<meta property="og:url" content="https://toothbrushroot.github.io/auto-blog/posts/linux-performance-troubleshooting.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="DevOpsDaily">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Linux Performance Troubleshooting: The 60-Second Check and Beyond">
+<meta name="twitter:description" content="A practical guide to Linux performance troubleshooting — the 60-second check, CPU, memory, disk I/O, network analysis, and the tools every DevOps engineer needs.">
+<link rel="canonical" href="https://toothbrushroot.github.io/auto-blog/posts/linux-performance-troubleshooting.html">
+</head>
+<body>
+<div class="container">
+<nav><a href="../index.html">← Back to DevOpsDaily</a></nav>
+<h1>Linux Performance Troubleshooting: The 60-Second Check and Beyond</h1>
+<div class="date">July 20, 2026 · 9 min read</div>
+<article>
+
+<p>When a production server starts misbehaving — latency spikes, dropped requests, OOM kills — you don't have time to read man pages. You need a systematic approach that rules out the most common culprits in under a minute, then drills into the root cause with targeted tools. This is exactly how I debug Linux performance issues on production systems, and it works whether you're on a bare-metal box, a VM, or a container host.</p>
+
+<p>This guide covers the full troubleshooting workflow. Here's what we'll walk through: <strong>the 60-second checklist</strong> (uptime, dmesg, vmstat, mpstat, pidstat, iostat, free, ss, sar), <strong>CPU hot-spot analysis</strong> with perf and flamegraphs, <strong>memory pressure</strong> including OOM and swap, <strong>disk I/O latency</strong> with iostat and blktrace, <strong>network troubleshooting</strong> with ss, tc, and tcpdump, and finally a <strong>decision tree</strong> to choose the right tool for any symptom.</p>
+
+<h2>1. The 60-Second Checklist</h2>
+
+<p>When you first SSH into a struggling box, run these commands in order. Each takes one look at a different subsystem. By the time you're done, you'll know <em>which</em> resource is the problem.</p>
+
+<pre><code>$ uptime                        # load averages — is the system under pressure?
+$ dmesg -T | tail -20           # kernel messages — OOM kills, TCP drops, I/O errors
+$ vmstat -SM 1 3                # system-wide CPU, memory, and I/O overview
+$ mpstat -P ALL 1 1             # per-CPU balance — one core pegged or evenly spread?
+$ pidstat 1 3                   # per-process CPU usage — who's burning cycles?
+$ iostat -xz 1 1                # disk I/O — await, svctm, %util
+$ free -m                       # memory usage — total, available, cached, swap
+$ ss -tupwn                     # socket connections — listening, established, TIME_WAIT
+$ sar -n DEV 1 1                # network throughput — packets/sec, errors, drops</code></pre>
+
+<p>I have an alias called <code>perf60</code> that runs all of these. The point isn't to memorize every flag — it's to have a checklist you <em>always</em> run before diagnosing deeper. Skipping this step is how people spend an hour debugging a memory leak that the OOM killer already logged in dmesg.</p>
+
+<blockquote>Pro tip: Save these commands as a shell script or alias and scp it to every new server you provision. Your future on-call self will thank you.</blockquote>
+
+<h2>2. CPU — Finding the Hot Spots</h2>
+
+<p>If <code>uptime</code> shows load averages significantly higher than the number of CPUs, and <code>mpstat</code> shows high %user or %system across cores, you have a CPU-bound issue. The next step is figuring out <em>what</em> is burning those cycles.</p>
+
+<h3>Per-Process with pidstat</h3>
+
+<pre><code>$ pidstat -p ALL -u 1 3
+Linux 6.8.0 (web-02)  07/20/2026  _x86_64_  (8 CPU)
+
+02:14:33   UID   PID    %usr  %system  %guest  %CPU   CPU  Command
+02:14:34  1001  1234   85.2    2.1     0.0     87.3   3    nginx
+02:14:34     0  4567    0.3   12.4     0.0     12.7   7    kworker/u16:1</code></pre>
+
+<p>Here, nginx worker 1234 is using 87% of a single core. That's suspicious — either it's stuck in an infinite loop or it's genuinely serving heavy traffic. The high <code>%system</code> on the kworker suggests something happening at the kernel level — check disk or network interrupts next.</p>
+
+<h3>Profiling with perf and Flamegraphs</h3>
+
+<p>When you need to know <em>which function</em> is hot, nothing beats <code>perf</code>. It uses hardware performance counters and stack sampling with negligible overhead — safe for production:</p>
+
+<pre><code># Record CPU samples for 30 seconds
+$ perf record -F 99 -a -g -- sleep 30
+
+# Generate the report
+$ perf report --stdio --sort comm,dso,symbol</code></pre>
+
+<p>The <code>-F 99</code> flag samples at 99 Hz (below 100 to avoid aliasing with common timer frequencies). The <code>-g</code> flag captures call graphs. Pipe the output into Brendan Gregg's flamegraph scripts for a visual:</p>
+
+<pre><code>$ perf script | ./stackcollapse-perf.pl | ./flamegraph.pl > cpu-flame.svg</code></pre>
+
+<p>A flamegraph immediately shows you the hot code paths. Wide bars at the top are functions spending the most CPU time. If you see <code>__do_fault</code> or <code>page_fault</code> near the top, your application is page-faulting heavily — not a CPU problem at all, but a memory one.</p>
+
+<h2>3. Memory — OOM, Swap, and Page Cache</h2>
+
+<p>Memory issues show up in three flavors: <strong>OOM kills</strong> (the kernel murders a process), <strong>swap thrashing</strong> (the system is paging like crazy), and <strong>page cache pressure</strong> (the filesystem cache is starving applications).</p>
+
+<h3>Check OOM Kills First</h3>
+
+<pre><code>$ dmesg -T | grep -i "oom\|killed"
+[Jul 20 01:23:45] mysqld invoked oom-killer: gfp_mask=0x100cca(GFP_HIGHUSER_MOVABLE)
+[Jul 20 01:23:45] mysqld: cpuset=/ mems_allowed=0
+[Jul 20 01:23:45] Tasks state (memory reserved: 0K, swap_total: 0K)
+[Jul 20 01:23:45] [ 1234] mysqld 1001 12345678 23456789  12345      0             0 mysqld
+[Jul 20 01:23:45] Out of memory: Killed process 1234 (mysqld) total-vm:12345678kB</code></pre>
+
+<p>The OOM killer logs every candidate process and the final victim. If you see your application here, the fix is not "add more RAM" (well, sometimes it is) — it's first checking for a memory leak.</p>
+
+<h3>Read the Numbers Correctly</h3>
+
+<p>The <code>free -m</code> output can be misleading. The <code>available</code> field is what matters:</p>
+
+<pre><code>$ free -m
+               total  used  free  shared  buff/cache  available
+Mem:           15950  8940  1020     420       5990       6010
+Swap:           2048   120  1928</code></pre>
+
+<p>Linux uses free RAM for disk cache aggressively. The <code>available</code> field (6010 MB) estimates how much memory is truly free for new allocations — it includes reclaimable cache. If <code>available</code> is below 10% of total, you're in danger territory.</p>
+
+<p><code>vmstat -SM 1</code> shows swap activity. If <code>si</code> (swap in) and <code>so</code> (swap out) are consistently non-zero, the system is paging — and performance will be terrible:</p>
+
+<pre><code>$ vmstat -SM 1
+procs  -----------memory----------  ---swap--  -----io----  --system--  ------cpu-----
+ r  b   swpd   free   buff   cache   si   so   bi    bo    in    cs  us  sy  id  wa  st
+ 2  1   120   1020    420   5990   50   45  1200   80   1500  2000  12   8  60  20   0</code></pre>
+
+<p>The <code>si</code>/<code>so</code> of 50/45 MB/s means 95 MB/s of swap traffic. That's disk-bound paging. Every page fault now waits for disk I/O. The <code>wa</code> column (20%) confirms it — the CPU is waiting on I/O.</p>
+
+<h3>Finding Memory Leaks</h3>
+
+<p>Use <code>pidstat -r 1</code> to watch per-process RSS growth over time:</p>
+
+<pre><code>$ pidstat -r 1 10
+02:20:00   UID   PID  minflt/s  majflt/s  VSZ    RSS    %MEM  Command
+02:20:01  1001  1234  12345      0       2.5G   1.8G   11.5  java
+02:20:02  1001  1234  12350      0       2.5G   1.8G   11.5  java
+02:20:03  1001  1234  14420      0       2.7G   2.0G   12.6  java   ← growing</code></pre>
+
+<p>If RSS keeps climbing without stabilizing, you have a leak. For Java, run <code>jmap -histo:live</code> to dump heap. For other apps, <code>/proc/PID/smaps</code> gives the full picture of memory mappings.</p>
+
+<h2>4. Disk I/O — Finding the Slow Storage</h2>
+
+<p>High <code>wa</code> in vmstat or <code>iowait</code> in mpstat points to disk contention. The <code>iostat -xz 1</code> command reveals which device and which operation is slow:</p>
+
+<pre><code>$ iostat -xz 1
+Device    r/s    w/s    rkB/s    wkB/s  await  svctm  %util
+sda      500     0    81920       0     24.0   0.40   20.0
+sdb        0   120        0    30720    180.0  1.20   14.4</code></pre>
+
+<p>Key fields to interpret:</p>
+<ul>
+<li><strong>await</strong> (ms) — average time for an I/O request to complete. Modern SSDs should be under 2 ms. Above 10 ms means something is wrong.</li>
+<li><strong>svctm</strong> (ms) — the actual service time for a single I/O. If await >> svctm, the requests are queuing (too much concurrency for the device).</li>
+<li><strong>%util</strong> — percentage of time the device was busy. Important caveat: modern NVMe SSDs can parallelize I/O deeply, so %util can hit 100% even though the device isn't saturated. Use <code>iostat -x 1 -m</code> and watch <code>aqu-sz</code> (average queue size) instead.</li>
+</ul>
+
+<p>Here sdb has an await of 180 ms — terrible. It's a write-heavy workload on what is likely a slow HDD or a network filesystem. The queue is deep: svctm is 1.2 ms while await is 180 ms, meaning requests are spending 99% of their time waiting in line.</p>
+
+<h3>Trace Specific I/O with blktrace</h3>
+
+<p>When you need to know <em>which process</em> is thrashing the disk:</p>
+
+<pre><code># Trace sdb for 5 seconds
+$ blktrace -d /dev/sdb -o - | blkparse -i - -o /tmp/blk-trace.txt
+$ grep -E " D  | A  " /tmp/blk-trace.txt | awk '{print $12}' | sort | uniq -c | sort -rn</code></pre>
+
+<p>This shows you which process names are doing the most I/O. Combine with <code>iotop -oP</code> for a live view.</p>
+
+<h2>5. Network — Connections, Drops, and Latency</h2>
+
+<p>Network issues masquerade as application slowness all the time. Before blaming the code, rule out the wire.</p>
+
+<h3>Connection State with ss</h3>
+
+<pre><code>$ ss -s
+Total: 1234 (kernel 1567)
+TCP:   567 (estab 234, closed 300, orphaned 3, synrecv 0, timewait 156/0), ports 45
+
+Transport Total     IP        IPv6
+*         1567      -         -
+RAW       0         0         0
+UDP       12        10        2
+TCP       567       523       44
+INET      579       533       46
+FRAG      0         0         0</code></pre>
+
+<p>156 TIME_WAIT connections isn't a problem by itself. But if <code>ss -t state time-wait</code> shows thousands, you're exhausting ephemeral ports — typically caused by HTTP/1.0 short connections or a misconfigured proxy pool.</p>
+
+<pre><code># Check listen backlog drops
+$ ss -ltp | grep -E "^(LISTEN|State)"
+$ netstat -s | grep -i "listen.*overflowed\|LISTEN.*overflows"
+    1234 times the listen queue of a socket overflowed</code></pre>
+
+<p>A listen backlog overflow means the application isn't accepting connections fast enough. Increase <code>net.core.somaxconn</code> and the application's backlog parameter. But this is a band-aid — the real fix is making your app accept connections faster (thread pool sizing, event loop tuning).</p>
+
+<h3>Packet Drops and Retransmits</h3>
+
+<pre><code>$ netstat -s | egrep "segments retransmited|packets pruned|TCPLoss"
+    8923 segments retransmited
+    156 packets pruned from receive queue
+    78 TCP sockets finished time wait in fast timer</code></pre>
+
+<p>Retransmits above 0.1% of total segments mean packet loss on the network. Use <code>tcpdump -i eth0 host $UPSTREAM_HOST</code> to capture and look for duplicate ACKs. It's often a saturated upstream switch port or a duplex mismatch.</p>
+
+<h3>Bandwidth and Queue Drops</h3>
+
+<pre><code>$ sar -n DEV 1 1 | grep eth0
+02:30:01     eth0    65000.00    8000.00    78901.00     6789.00     0.00     0.00     0.00
+
+$ tc -s qdisc show dev eth0
+qdisc pfifo_fast 0: root refcnt 2 bands 3 priomap  1 2 2 2 1 2 0 0 1 1 1 1 1 1 1 1
+ Sent 123456789 bytes 98765 pkt (dropped 456, overlimits 0)
+ backlog 0b 0p requeues 0</code></pre>
+
+<p>The <code>dropped 456</code> in tc output means the transmit queue is overflowing. Your application is sending data faster than the NIC can transmit it. Either increase the txqueuelen (<code>ip link set eth0 txqueuelen 10000</code>) or reduce the application burst rate.</p>
+
+<h2>6. Decision Tree — Which Tool for Which Symptom</h2>
+
+<p>Here's a quick reference to jump directly to the right tool based on what you observe:</p>
+
+<table>
+<tr><th>Symptom</th><th>First Command</th><th>Deep Dive</th></tr>
+<tr><td>Load average high, CPU idle low</td><td>mpstat -P ALL 1</td><td>perf top / flamegraphs</td></tr>
+<tr><td>Load high, CPU idle also high</td><td>vmstat 1 (check b column)</td><td>iostat -xz 1, blktrace</td></tr>
+<tr><td>Application slow, no obvious resource issue</td><td>ss -tupn (check TIME_WAIT)</td><td>tcpdump, strace -c -p PID</td></tr>
+<tr><td>Server unreachable or timeout</td><td>dmesg -T | tail</td><td>sar -n EDEV, check OOM kills</td></tr>
+<tr><td>OOM kills in logs</td><td>free -m, pidstat -r 1</td><td>pmap -x PID, /proc/PID/smaps</td></tr>
+<tr><td>Disk latency high (wa > 10%)</td><td>iostat -xz 1</td><td>iotop -oP, blktrace</td></tr>
+<tr><td>Network retransmits > 0.1%</td><td>sar -n ETCP 1</td><td>tcpdump -w /tmp/dump.pcap</td></tr>
+</table>
+
+<h2>Putting It All Together</h2>
+
+<p>Effective Linux performance troubleshooting is a skill you build by doing — but always start with the 60-second checklist. It forces you to check CPU, memory, disk, and network <em>before</em> jumping to conclusions. I've lost count of how many "application bugs" turned out to be a server running out of memory or a saturated network link.</p>
+
+<p>The tools here (<code>perf</code>, <code>vmstat</code>, <code>iostat</code>, <code>ss</code>, <code>blktrace</code>, <code>tcpdump</code>) are available on every Linux distribution and have zero dependencies. Learn to read their output fluently, and you'll be the person in the war room who can say "it's the disk queue depth, not the application code" with confidence.</p>
+
+<p>One final rule: <strong>instrument before you need it.</strong> Set up <code>sar</code> data collection (<code>sysstat</code> package), configure kernel audit logging for OOM events, and deploy a metrics agent that keeps historical data. When the next incident hits — and it will — you'll have the baseline to know whether things are actually worse than normal.</p>
+
+</article>
+<footer><p>© 2026 DevOpsDaily · <a href="../index.html">Home</a></p></footer>
+</div>
+</body>
+</html>
