@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A practical guide to Kubernetes liveness, readiness, and startup probes — with real YAML examples, failure scenarios, and best practices for production deployments.">
+<title>Kubernetes Health Probes: Liveness, Readiness, and Startup Explained - DevOpsDaily</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.8;font-size:1.05rem}
+.container{max-width:750px;margin:0 auto;padding:2rem 1rem}
+nav{margin-bottom:1rem}
+nav a{color:#58a6ff;text-decoration:none;font-size:.9rem}
+h1{font-size:2rem;color:#f0f6fc;margin:.5rem 0 1.5rem;line-height:1.3}
+.date{color:#8b949e;font-size:.9rem;margin-bottom:2rem}
+article h2{color:#f0f6fc;font-size:1.4rem;margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid #21262d}
+article h3{color:#f0f6fc;font-size:1.15rem;margin:1.5rem 0 .5rem}
+article p{margin-bottom:1rem;color:#b1bac4}
+article code{background:#21262d;padding:.15rem .4rem;border-radius:3px;font-size:.9rem;color:#ffa657}
+article pre{background:#161b22;border:1px solid #21262d;border-radius:6px;padding:1rem;overflow-x:auto;margin-bottom:1.5rem;font-size:.9rem}
+article pre code{background:none;padding:0;color:#c9d1d9}
+article a{color:#58a6ff}
+article ul,article ol{margin:0 0 1rem 1.5rem;color:#b1bac4}
+article li{margin-bottom:.3rem}
+article blockquote{border-left:3px solid #30363d;padding-left:1rem;color:#8b949e;margin-bottom:1rem;font-style:italic}
+footer{text-align:center;padding:2rem;color:#484f58;font-size:.85rem;border-top:1px solid #21262d;margin-top:3rem}
+footer a{color:#484f58}
+</style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Kubernetes Health Probes: Liveness, Readiness, and Startup Explained",
+  "description": "A practical guide to Kubernetes liveness, readiness, and startup probes — with real YAML examples, failure scenarios, and best practices for production deployments.",
+  "datePublished": "2026-07-21",
+  "dateModified": "2026-07-21",
+  "author": {"@type": "Organization", "name": "DevOpsDaily"},
+  "publisher": {"@type": "Organization", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"},
+  "url": "https://toothbrushroot.github.io/auto-blog/posts/kubernetes-health-probes.html",
+  "isPartOf": {"@type": "Blog", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"}
+}
+</script>
+<meta property="og:title" content="Kubernetes Health Probes: Liveness, Readiness, and Startup Explained">
+<meta property="og:description" content="A practical guide to Kubernetes liveness, readiness, and startup probes — with real YAML examples, failure scenarios, and best practices for production deployments.">
+<meta property="og:url" content="https://toothbrushroot.github.io/auto-blog/posts/kubernetes-health-probes.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="DevOpsDaily">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Kubernetes Health Probes: Liveness, Readiness, and Startup Explained">
+<meta name="twitter:description" content="A practical guide to Kubernetes liveness, readiness, and startup probes — with real YAML examples, failure scenarios, and best practices for production deployments.">
+<link rel="canonical" href="https://toothbrushroot.github.io/auto-blog/posts/kubernetes-health-probes.html">
+</head>
+<body>
+<div class="container">
+<nav><a href="../index.html">← Back to DevOpsDaily</a></nav>
+<h1>Kubernetes Health Probes: Liveness, Readiness, and Startup Explained</h1>
+<div class="date">July 21, 2026 · 7 min read</div>
+<article>
+
+<p>You've deployed your app to Kubernetes. The pod starts — then it gets killed. Or it's running but no traffic reaches it. Or it takes 90 seconds to initialize and gets restarted in a loop. Every one of these problems traces back to the same root cause: <strong>misconfigured or missing health probes</strong>.</p>
+
+<p>Kubernetes gives you three types of probes: <code>livenessProbe</code>, <code>readinessProbe</code>, and <code>startupProbe</code>. Each serves a different purpose. Mix them up and your pods restart in infinite loops. Get them right and your deployments self-heal, scale correctly, and handle rolling updates without a single dropped request.</p>
+
+<p>Here's what each probe does, when to use it, and how to configure it for a real production service.</p>
+
+<h2>1. Liveness Probe: Is the Container Alive?</h2>
+
+<p>The liveness probe answers one question: <em>"Is this container still running correctly?"</em> If the probe fails, kubelet kills the container and restarts it.</p>
+
+<pre><code>livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  failureThreshold: 3</code></pre>
+
+<p>Use liveness probes for <strong>deadlock detection</strong>. If your app enters a state where it's alive but not making progress (a goroutine leak, a stuck mutex, an infinite loop), the liveness probe exposes that and triggers a restart.</p>
+
+<p><strong>The #1 mistake</strong> people make: using the liveness probe to check external dependencies like databases or upstream APIs. Don't do this. If your database is down and your liveness probe fails, Kubernetes will restart your pod — but the database is still down. Restarting the app doesn't help, and now you have a crash loop on top of a DB outage. That's worse.</p>
+
+<blockquote>Liveness probes should only check internal process health. Not database connectivity, not Redis, not upstream services.</blockquote>
+
+<h2>2. Readiness Probe: Is the Container Ready for Traffic?</h2>
+
+<p>The readiness probe answers: <em>"Should this pod receive traffic?"</em> If it fails, the pod is removed from all Service endpoints. It is <strong>not</strong> restarted.</p>
+
+<pre><code>readinessProbe:
+  httpGet:
+    path: /ready
+    port: 8080
+  periodSeconds: 5
+  failureThreshold: 2
+  successThreshold: 1</code></pre>
+
+<p>This is where you <strong>should</strong> check external dependencies. If your app needs a database connection or a warm cache to serve requests, the readiness probe should reflect that. When the database recovers, the probe starts passing again, and the pod is automatically re-added to the load balancer.</p>
+
+<p>Readiness probes also control <strong>rolling update behavior</strong>. During a deployment, Kubernetes waits for the new pod's readiness probe to pass before terminating the old pod. Without a readiness probe, your deployment might kill the old pod before the new pod is actually ready — causing a brief outage.</p>
+
+<h2>3. Startup Probe: Slow Starters Need Love</h2>
+
+<p>The startup probe was added in Kubernetes 1.18. It answers: <em>"Has the application finished initializing?"</em></p>
+
+<pre><code>startupProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+  failureThreshold: 30
+  periodSeconds: 10</code></pre>
+
+<p>This gives your app up to 300 seconds (30 × 10) to start. While the startup probe is running, the liveness and readiness probes are <strong>disabled</strong>. Once the startup probe succeeds, Kubernetes hands control back to the liveness and readiness probes.</p>
+
+<p>Why does this matter? Consider a Java application with a 2-minute startup time. Without a startup probe, you have two choices:</p>
+<ul>
+<li><strong>Set <code>initialDelaySeconds: 120</code></strong> — but now every restart waits 2 minutes before probing starts, even for fast restarts.</li>
+<li><strong>Set <code>failureThreshold: 12</code> with <code>periodSeconds: 10</code></strong> — gives 120 seconds but makes the probe tolerates failures for 2 minutes, hiding real problems.</li>
+</ul>
+
+<p>The startup probe solves this cleanly. Give it a generous threshold (30 failures × 10 seconds = 300 seconds). Keep your liveness probe tight (3 failures × 10 seconds = 30 seconds). The liveness probe is only activated after the app has fully started.</p>
+
+<h2>4. Probe Types: HTTP, TCP, and Command</h2>
+
+<p>All three probes support the same handler types:</p>
+
+<table style="width:100%;border-collapse:collapse;margin-bottom:1.5rem;color:#b1bac4">
+<tr style="border-bottom:1px solid #21262d"><th style="text-align:left;padding:.5rem;color:#f0f6fc">Type</th><th style="text-align:left;padding:.5rem;color:#f0f6fc">When to Use</th></tr>
+<tr style="border-bottom:1px solid #21262d"><td style="padding:.5rem"><code>httpGet</code></td><td style="padding:.5rem">Your app has an HTTP endpoint. Best for web services and APIs.</td></tr>
+<tr style="border-bottom:1px solid #21262d"><td style="padding:.5rem"><code>tcpSocket</code></td><td style="padding:.5rem">Your app listens on a port but doesn't speak HTTP. Databases, message queues.</td></tr>
+<tr style="border-bottom:1px solid #21262d"><td style="padding:.5rem"><code>exec</code></td><td style="padding:.5rem">No HTTP server. Runs a command inside the container; exit code 0 = success.</td></tr>
+</table>
+
+<p>HTTP probes are the most expressive because you can return different status codes for different probe types:</p>
+
+<pre><code>// Go example: separate endpoints for each probe
+http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+  // Internal: check process health only
+  w.WriteHeader(http.StatusOK)
+})
+
+http.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
+  if dbIsConnected {
+    w.WriteHeader(http.StatusOK)
+  } else {
+    w.WriteHeader(http.StatusServiceUnavailable)
+  }
+})</code></pre>
+
+<h2>5. Putting It All Together</h2>
+
+<p>Here's a complete production-ready deployment with all three probes configured correctly:</p>
+
+<pre><code>apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-api
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    spec:
+      containers:
+      - name: api
+        image: my-api:latest
+        ports:
+        - containerPort: 8080
+        startupProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          failureThreshold: 30
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          periodSeconds: 15
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          periodSeconds: 5
+          failureThreshold: 2
+          successThreshold: 1
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"</code></pre>
+
+<p>Notice what this configuration achieves:</p>
+<ul>
+<li><strong>Startup probe</strong> gives the app up to 5 minutes to initialize. Great for JVM apps, machine learning models, or anything with a warmup phase.</li>
+<li><strong>Liveness probe</strong> kicks in after startup succeeds. It's tight — 3 failures × 15 seconds = 45 seconds to detect and restart a hung process.</li>
+<li><strong>Readiness probe</strong> checks external dependencies every 5 seconds. If the database goes down, the pod is removed from the Service within 10 seconds. Traffic is re-routed to healthy pods.</li>
+<li><strong>Rolling update</strong> uses <code>maxUnavailable: 0</code> — never kill the old pod until the new one passes readiness. Zero-downtime deployments.</li>
+</ul>
+
+<h2>6. Common Pitfalls</h2>
+
+<p>Over the years, I've seen (and caused) these issues more than any others:</p>
+
+<ul>
+<li><strong>Heavy readiness checks.</strong> If your /ready endpoint queries 10 database tables, every pod hitting it every 5 seconds creates unnecessary load. Keep readiness probes light — a simple ping or a connection pool check is enough.</li>
+<li><strong>No startup probe on slow apps.</strong> Without it, your liveness probe starts during initialization, fails because the app isn't listening yet, and Kubernetes restarts the pod before it finishes starting. Classic crash loop.</li>
+<li><strong>Same endpoint for all three probes.</strong> If /healthz checks the database (for readiness) but also triggers restarts (for liveness), a DB outage becomes a pod crash loop. Use separate endpoints.</li>
+<li><strong>Too many replicas checking the same dependency.</strong> If Redis goes down and all 10 pods fail their readiness probe simultaneously, you get a thundering herd when Redis comes back. Add a small random jitter to your probe timing if this is a concern.</li>
+</ul>
+
+<h2>7. Debugging Probes</h2>
+
+<p>When probes aren't working, start here:</p>
+
+<pre><code># Check probe status for a specific pod
+kubectl describe pod my-api-7d4f8b9c6c-xk9j2
+
+# Watch events in real time
+kubectl get events --watch
+
+# Check if the endpoint actually responds
+kubectl exec my-api-7d4f8b9c6c-xk9j2 -- curl -v http://localhost:8080/healthz
+
+# See why a pod was restarted
+kubectl logs my-api-7d4f8b9c6c-xk9j2 --previous</code></pre>
+
+<p>The <code>describe pod</code> output shows probe results under the Conditions section. If <code>Ready</code> is <code>False</code>, the readiness probe is failing. If <code>Containers</code> shows a <code>Restart Count</code> above zero, the liveness probe triggered a restart. These two numbers tell you the whole story.</p>
+
+<h2>Summary</h2>
+
+<p>Three probes, three jobs:</p>
+<ul>
+<li><strong>Startup probe</strong> — give slow apps time to boot. Disables other probes during initialization.</li>
+<li><strong>Liveness probe</strong> — detect deadlocked or hung processes. Triggers restarts. Keep it simple, check only internal health.</li>
+<li><strong>Readiness probe</strong> — control traffic routing. Check external dependencies here. Pods are removed from Services when this fails.</li>
+</ul>
+
+<p>Configure all three in production. Use separate HTTP endpoints for liveness and readiness. Add a startup probe if your app takes more than 10 seconds to start. Once you nail this pattern, your deployments become boring — and boring deployments are the best kind.</p>
+
+</article>
+<footer><p>© 2026 DevOpsDaily · <a href="../index.html">Home</a></p></footer>
+</div>
+</body>
+</html>
