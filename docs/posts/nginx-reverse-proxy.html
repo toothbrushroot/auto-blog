@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A practical guide to Nginx reverse proxy — from zero to production. Covers proxy_pass, SSL/TLS, WebSocket support, load balancing, caching, security headers, and real-world configs.">
+<title>Nginx Reverse Proxy: From Zero to Production - DevOpsDaily</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.8;font-size:1.05rem}
+.container{max-width:750px;margin:0 auto;padding:2rem 1rem}
+nav{margin-bottom:1rem}
+nav a{color:#58a6ff;text-decoration:none;font-size:.9rem}
+h1{font-size:2rem;color:#f0f6fc;margin:.5rem 0 1.5rem;line-height:1.3}
+.date{color:#8b949e;font-size:.9rem;margin-bottom:2rem}
+article h2{color:#f0f6fc;font-size:1.4rem;margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid #21262d}
+article h3{color:#f0f6fc;font-size:1.15rem;margin:1.5rem 0 .5rem}
+article p{margin-bottom:1rem;color:#b1bac4}
+article code{background:#21262d;padding:.15rem .4rem;border-radius:3px;font-size:.9rem;color:#ffa657}
+article pre{background:#161b22;border:1px solid #21262d;border-radius:6px;padding:1rem;overflow-x:auto;margin-bottom:1.5rem;font-size:.9rem}
+article ul,article ol{margin-bottom:1rem;padding-left:1.5rem;color:#b1bac4}
+article li{margin-bottom:.4rem}
+article table{width:100%;border-collapse:collapse;margin-bottom:1.5rem}
+article th{background:#161b22;color:#f0f6fc;text-align:left;padding:.6rem .8rem;border:1px solid #21262d;font-size:.9rem}
+article td{padding:.6rem .8rem;border:1px solid #21262d;font-size:.9rem;color:#b1bac4}
+blockquote{border-left:3px solid #58a6ff;padding:.5rem 1rem;margin-bottom:1rem;background:#161b22;border-radius:0 4px 4px 0}
+blockquote p{color:#8b949e;margin-bottom:0}
+footer{margin-top:3rem;padding:1.5rem 0;border-top:1px solid #21262d;color:#484f58;font-size:.85rem;text-align:center}
+footer a{color:#58a6ff;text-decoration:none}
+</style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Nginx Reverse Proxy: From Zero to Production",
+  "description": "A practical guide to Nginx reverse proxy — proxy_pass, SSL/TLS, WebSocket, load balancing, caching, and security headers.",
+  "datePublished": "2026-07-24",
+  "author": {"@type": "Person", "name": "DevOpsDaily"},
+  "url": "https://toothbrushroot.github.io/auto-blog/posts/nginx-reverse-proxy.html",
+  "publisher": {"@type": "Organization", "name": "DevOpsDaily"}
+}
+</script>
+<link rel="canonical" href="https://toothbrushroot.github.io/auto-blog/posts/nginx-reverse-proxy.html">
+<meta property="og:title" content="Nginx Reverse Proxy: From Zero to Production">
+<meta property="og:description" content="A practical guide to Nginx reverse proxy — proxy_pass, SSL/TLS, WebSocket, load balancing, caching, and security headers.">
+<meta property="og:url" content="https://toothbrushroot.github.io/auto-blog/posts/nginx-reverse-proxy.html">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Nginx Reverse Proxy: From Zero to Production">
+<meta name="twitter:description" content="A practical guide to Nginx reverse proxy — proxy_pass, SSL/TLS, WebSocket, load balancing, caching, and security headers.">
+</head>
+<body>
+<div class="container">
+<nav><a href="../index.html">← Back to DevOpsDaily</a></nav>
+<h1>Nginx Reverse Proxy: From Zero to Production</h1>
+<div class="date">July 24, 2026</div>
+<article>
+
+<p>Every production web app needs something sitting in front of it. Nginx handles that job for roughly 34% of all websites. This guide covers the reverse proxy configs you'll actually use — not the exhaustive reference manual, but the patterns that ship to production.</p>
+
+<h2>Why Reverse Proxy?</h2>
+
+<p>Your app server (Node, Python, Go, Java) speaks HTTP but shouldn't face the internet directly. Nginx sits between clients and your app to handle things app servers are bad at:</p>
+
+<ul>
+<li><strong>TLS termination</strong> — decrypt HTTPS once at the edge</li>
+<li><strong>Static files</strong> — serve them 10-50x faster than any app framework</li>
+<li><strong>Load balancing</strong> — distribute traffic across multiple app instances</li>
+<li><strong>Rate limiting</strong> — block abusive clients before they hit your app</li>
+<li><strong>Compression</strong> — gzip/brotli responses without app code changes</li>
+<li><strong>Connection buffering</strong> — absorb slow clients so your app threads don't wait</li>
+</ul>
+
+<h2>Basic proxy_pass</h2>
+
+<p>The simplest reverse proxy config is five lines:</p>
+
+<pre><code>server {
+    listen 80;
+    server_name example.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+    }
+}</code></pre>
+
+<p>This forwards every request to a local app on port 3000. But this bare config has problems — it doesn't forward headers, so your app sees every request as coming from 127.0.0.1. Fix that:</p>
+
+<pre><code>location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}</code></pre>
+
+<p>Now your app knows the real client IP, the original Host header, and whether the request arrived over HTTP or HTTPS. Most frameworks trust these headers automatically when behind a proxy.</p>
+
+<blockquote><p><strong>Trap:</strong> If your app uses Express.js, set <code>app.set('trust proxy', true)</code> or <code>req.ip</code> will always return <code>127.0.0.1</code>.</p></blockquote>
+
+<h2>SSL/TLS with Let's Encrypt</h2>
+
+<p>Certbot makes TLS setup almost automatic. Install it, run it, and it modifies your Nginx config for you:</p>
+
+<pre><code># Install certbot
+sudo apt install certbot python3-certbot-nginx
+
+# Get certificate and auto-configure Nginx
+sudo certbot --nginx -d example.com -d www.example.com
+
+# Verify auto-renewal
+sudo certbot renew --dry-run</code></pre>
+
+<p>Certbot adds the SSL directives and sets up a cron job for renewal. If you want to configure TLS manually (or understand what Certbot did), here's the production-ready block:</p>
+
+<pre><code>server {
+    listen 443 ssl http2;
+    server_name example.com;
+
+    ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+
+    # Redirect HTTP to HTTPS
+    add_header Strict-Transport-Security "max-age=63072000" always;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+# Redirect HTTP → HTTPS
+server {
+    listen 80;
+    server_name example.com;
+    return 301 https://$host$request_uri;
+}</code></pre>
+
+<h2>WebSocket Support</h2>
+
+<p>Standard proxy configs break WebSockets because Nginx buffers the connection by default. Add these two directives inside your <code>location</code> block:</p>
+
+<pre><code>location /ws/ {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_read_timeout 86400s;
+    proxy_send_timeout 86400s;
+}</code></pre>
+
+<p>The <code>Upgrade</code> and <code>Connection</code> headers tell Nginx to switch protocols instead of buffering. The 86400s timeout keeps long-lived WebSocket connections alive. Without it, idle connections drop after 60 seconds (Nginx default).</p>
+
+<h2>Load Balancing</h2>
+
+<p>When you have multiple app instances, use <code>upstream</code> to distribute traffic:</p>
+
+<pre><code>upstream backend {
+    least_conn;
+    server 127.0.0.1:3000;
+    server 127.0.0.1:3001;
+    server 127.0.0.1:3002;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name example.com;
+
+    location / {
+        proxy_pass http://backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}</code></pre>
+
+<p>Nginx offers three balancing algorithms:</p>
+
+<table>
+<tr><th>Algorithm</th><th>Directive</th><th>Best For</th></tr>
+<tr><td>Round Robin</td><td>(default)</td><td>Equal-capacity servers</td></tr>
+<tr><td>Least Connections</td><td><code>least_conn;</code></td><td>Varying request durations</td></tr>
+<tr><td>IP Hash</td><td><code>ip_hash;</code></td><td>Session persistence needed</td></tr>
+</table>
+
+<p>Add <code>weight=N</code> to send more traffic to stronger machines: <code>server 127.0.0.1:3000 weight=3;</code></p>
+
+<h2>Caching</h2>
+
+<p>Nginx can cache responses from your app, reducing load dramatically for repeat requests:</p>
+
+<pre><code># In http {} block
+proxy_cache_path /var/cache/nginx levels=1:2 keys_zone=app_cache:10m max_size=1g inactive=60m;
+
+server {
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_cache app_cache;
+        proxy_cache_valid 200 302 10m;
+        proxy_cache_valid 404 1m;
+        proxy_cache_use_stale error timeout updating;
+        add_header X-Cache-Status $upstream_cache_status;
+    }
+}</code></pre>
+
+<p>The <code>X-Cache-Status</code> header tells you if a response was <code>HIT</code>, <code>MISS</code>, or <code>STALE</code>. Use it during development — remove or keep it in production as you prefer.</p>
+
+<blockquote><p><strong>Don't cache POST requests.</strong> Nginx won't by default, but if your app misuses GET for mutations, you'll serve stale data. Fix the app, not the cache config.</p></blockquote>
+
+<h2>Rate Limiting</h2>
+
+<p>Protect your app from abuse by limiting request rates per IP:</p>
+
+<pre><code># In http {} block
+limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
+
+server {
+    location /api/ {
+        limit_req zone=api_limit burst=20 nodelay;
+        proxy_pass http://127.0.0.1:3000;
+    }
+}</code></pre>
+
+<p>This allows 10 requests/second per IP with a burst buffer of 20. Excess requests get a 503. The <code>nodelay</code> flag serves burst requests immediately instead of queuing them.</p>
+
+<h2>Security Headers</h2>
+
+<p>Add these in your <code>server</code> block to harden against common attacks:</p>
+
+<pre><code># Clickjacking protection
+add_header X-Frame-Options "SAMEORIGIN" always;
+
+# MIME-type sniffing prevention
+add_header X-Content-Type-Options "nosniff" always;
+
+# XSS filter (legacy but still useful)
+add_header X-XSS-Protection "1; mode=block" always;
+
+# Referrer policy
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+# Content Security Policy — customize per app
+add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';" always;</code></pre>
+
+<p><strong>Test your headers:</strong> <code>curl -sI https://example.com | grep -i "x-\|strict\|content-security"</code></p>
+
+<h2>Common Pitfalls</h2>
+
+<h3>1. Trailing slash in proxy_pass</h3>
+
+<p><code>proxy_pass http://127.0.0.1:3000</code> forwards the full URI. <code>proxy_pass http://127.0.0.1:3000/</code> strips the matched <code>location</code> prefix. This distinction causes more bugs than any other Nginx feature.</p>
+
+<pre><code># Request: GET /api/users
+# proxy_pass http://backend;       → forwards /api/users
+# proxy_pass http://backend/;      → forwards /users  (prefix stripped)</code></pre>
+
+<h3>2. Large file uploads fail</h3>
+
+<pre><code>client_max_body_size 50m;    # In server or location block
+proxy_request_buffering off;  # Stream uploads directly to backend</code></pre>
+
+<p>Default is 1MB. Every API that accepts file uploads needs this tuned.</p>
+
+<h3>3. Proxy buffers too small</h3>
+
+<p>If your backend returns large headers (big cookies, JWT tokens), Nginx returns 502:</p>
+
+<pre><code>proxy_buffer_size 16k;
+proxy_buffers 4 32k;</code></pre>
+
+<h2>Quick Reference</h2>
+
+<pre><code># Test config before reloading
+sudo nginx -t
+
+# Reload without dropping connections
+sudo nginx -s reload
+
+# Check which config files are loaded
+nginx -T
+
+# View access logs in real time
+tail -f /var/log/nginx/access.log
+
+# Check upstream health
+curl -sI http://127.0.0.1:3000/health</code></pre>
+
+<p>Nginx reverse proxy is one of those tools that's simple to start with and deep enough to study for years. Start with basic <code>proxy_pass</code>, add TLS, then layer on caching and rate limiting as traffic grows. The config you need today is probably 20 lines. Ship that, and add complexity only when the monitoring data tells you to.</p>
+
+</article>
+<footer><p>© 2026 DevOpsDaily · <a href="../index.html">Home</a></p></footer>
+</div>
+</body>
+</html>
