@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A beginner's guide to Terraform — infrastructure as code basics, providers, resources, state management, and your first AWS deployment with HCL.">
+<title>Terraform from Zero: Infrastructure as Code for Beginners</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.8}
+.container{max-width:800px;margin:0 auto;padding:2rem 1rem}
+h1{color:#58a6ff;font-size:2rem;margin-bottom:.5rem}
+h2{color:#58a6ff;font-size:1.4rem;margin:2rem 0 1rem;border-bottom:1px solid #21262d;padding-bottom:.5rem}
+h3{color:#c9d1d9;font-size:1.1rem;margin:1.5rem 0 .5rem}
+p{margin-bottom:1rem;color:#c9d1d9}
+code{background:#21262d;color:#f0f6fc;padding:.15em .4em;border-radius:3px;font-size:.9em}
+pre{background:#161b22;border:1px solid #30363d;border-radius:6px;padding:1rem;overflow-x:auto;margin:1rem 0;font-size:.85rem}
+pre code{background:none;padding:0;color:#f0f6fc}
+ul,ol{margin:1rem 0;padding-left:1.5rem;color:#c9d1d9}
+li{margin-bottom:.5rem}
+a{color:#58a6ff;text-decoration:none}
+a:hover{text-decoration:underline}
+.meta{color:#8b949e;font-size:.85rem;margin-bottom:2rem;padding-bottom:1rem;border-bottom:1px solid #21262d}
+.keyword{color:#ff7b72}
+.string{color:#a5d6ff}
+.comment{color:#8b949e;font-style:italic}
+.function{color:#d2a8ff}
+footer{text-align:center;padding:2rem;color:#484f58;font-size:.85rem;border-top:1px solid #21262d;margin-top:3rem}
+footer a{color:#58a6ff}
+</style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Terraform from Zero: Infrastructure as Code for Beginners",
+  "description": "A beginner's guide to Terraform — infrastructure as code basics, providers, resources, state management, and your first AWS deployment with HCL.",
+  "datePublished": "2026-07-29",
+  "dateModified": "2026-07-29",
+  "author": {
+    "@type": "Person",
+    "name": "DevOpsDaily"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "DevOpsDaily"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://toothbrushroot.github.io/auto-blog/posts/terraform-from-zero"
+  },
+  "keywords": ["terraform", "infrastructure as code", "iac", "aws", "hcl", "devops", "cloud"]
+}
+</script>
+<link rel="canonical" href="https://toothbrushroot.github.io/auto-blog/posts/terraform-from-zero">
+</head>
+<body>
+<div class="container">
+<article>
+<h1>Terraform from Zero: Infrastructure as Code for Beginners</h1>
+<div class="meta">July 29, 2026 · 8 min read</div>
+
+<p>If you're still clicking through cloud consoles to create servers, networks, and databases, you're doing it wrong. Every manual change is a ticking time bomb — undocumented, unreproducible, and impossible to roll back. <strong>Terraform</strong> fixes this by letting you define infrastructure in code, then apply it predictably.</p>
+
+<p>This guide takes you from zero to your first deployed resource, covering the core concepts you actually need to understand.</p>
+
+<h2>What Is Terraform?</h2>
+
+<p>Terraform is an open-source tool by HashiCorp that uses a declarative language called <strong>HCL</strong> (HashiCorp Configuration Language) to describe infrastructure. You write <em>what</em> you want, and Terrafig figures out <em>how</em> to create it.</p>
+
+<pre><code><span class="comment"># main.tf — your first Terraform file</span>
+<span class="keyword">resource</span> <span class="string">"aws_instance"</span> <span class="string">"web"</span> {
+  <span class="function">ami</span>           = <span class="string">"ami-0c55b159cbfafe1f0"</span>
+  <span class="function">instance_type</span> = <span class="string">"t2.micro"</span>
+
+  <span class="function">tags</span> = {
+    <span class="function">Name</span> = <span class="string">"my-first-server"</span>
+  }
+}</code></pre>
+
+<p>This says: "I want an AWS EC2 instance, t2.micro size, tagged as 'my-first-server'." Terraform handles the API calls, waits for provisioning, and reports the result.</p>
+
+<h2>Core Concepts</h2>
+
+<h3>Providers</h3>
+<p>Providers are plugins that let Terraform talk to different platforms — AWS, Azure, GCP, GitHub, Cloudflare, even local files. You declare which providers you need:</p>
+
+<pre><code><span class="keyword">terraform</span> {
+  <span class="function">required_providers</span> {
+    <span class="function">aws</span> = {
+      <span class="function">source</span>  = <span class="string">"hashicorp/aws"</span>
+      <span class="function">version</span> = <span class="string">"~> 5.0"</span>
+    }
+  }
+}
+
+<span class="keyword">provider</span> <span class="string">"aws"</span> {
+  <span class="function">region</span> = <span class="string">"us-east-1"</span>
+}</code></pre>
+
+<p>Run <code>terraform init</code> and Terraform downloads the provider plugins automatically.</p>
+
+<h3>Resources</h3>
+<p>Resources are the building blocks — each one describes a single infrastructure object:</p>
+
+<pre><code><span class="comment"># A VPC</span>
+<span class="keyword">resource</span> <span class="string">"aws_vpc"</span> <span class="string">"main"</span> {
+  <span class="function">cidr_block</span> = <span class="string">"10.0.0.0/16"</span>
+}
+
+<span class="comment"># A subnet inside that VPC</span>
+<span class="keyword">resource</span> <span class="string">"aws_subnet"</span> <span class="string">"public"</span> {
+  <span class="function">vpc_id</span>     = aws_vpc.main.id
+  <span class="function">cidr_block</span> = <span class="string">"10.0.1.0/24"</span>
+}</code></pre>
+
+<p>Notice how the subnet references the VPC by its Terraform address (<code>aws_vpc.main.id</code>). Terraform automatically resolves dependencies and creates resources in the right order.</p>
+
+<h3>State</h3>
+<p>Terraform keeps a <strong>state file</strong> (<code>terraform.tfstate</code>) that maps your code to real-world resources. This is how Terraform knows what exists, what changed, and what to destroy.</p>
+
+<p><strong>Never commit state files to git.</strong> They contain secrets (passwords, keys). Use remote state backends like S3 with encryption:</p>
+
+<pre><code><span class="keyword">terraform</span> {
+  <span class="function">backend</span> <span class="string">"s3"</span> {
+    <span class="function">bucket</span> = <span class="string">"my-terraform-state"</span>
+    <span class="function">key</span>    = <span class="string">"prod/terraform.tfstate"</span>
+    <span class="function">region</span> = <span class="string">"us-east-1"</span>
+  }
+}</code></pre>
+
+<h2>The Terraform Workflow</h2>
+
+<p>Three commands is all you need:</p>
+
+<pre><code><span class="comment"># 1. Initialize — download providers</span>
+terraform init
+
+<span class="comment"># 2. Preview — see what will change</span>
+terraform plan
+
+<span class="comment"># 3. Apply — create/modify/destroy resources</span>
+terraform apply</code></pre>
+
+<p><code>terraform plan</code> is your safety net. It shows exactly what will happen before anything is touched. Always review the plan before applying.</p>
+
+<h2>A Complete Example: AWS Web Server</h2>
+
+<p>Here's a minimal but real setup — a VPC, subnet, security group, and EC2 instance with Nginx:</p>
+
+<pre><code><span class="keyword">variable</span> <span class="string">"key_name"</span> {
+  <span class="function">description</span> = <span class="string">"SSH key pair name"</span>
+  <span class="function">type</span>        = string
+}
+
+<span class="keyword">resource</span> <span class="string">"aws_vpc"</span> <span class="string">"main"</span> {
+  <span class="function">cidr_block</span>           = <span class="string">"10.0.0.0/16"</span>
+  <span class="function">enable_dns_hostnames</span> = <span class="keyword">true</span>
+
+  <span class="function">tags</span> = { <span class="function">Name</span> = <span class="string">"tf-vpc"</span> }
+}
+
+<span class="keyword">resource</span> <span class="string">"aws_subnet"</span> <span class="string">"public"</span> {
+  <span class="function">vpc_id</span>                  = aws_vpc.main.id
+  <span class="function">cidr_block</span>              = <span class="string">"10.0.1.0/24"</span>
+  <span class="function">map_public_ip_on_launch</span> = <span class="keyword">true</span>
+}
+
+<span class="keyword">resource</span> <span class="string">"aws_security_group"</span> <span class="string">"web"</span> {
+  <span class="function">vpc_id</span> = aws_vpc.main.id
+
+  <span class="function">ingress</span> {
+    <span class="function">from_port</span>   = 80
+    <span class="function">to_port</span>     = 80
+    <span class="function">protocol</span>    = <span class="string">"tcp"</span>
+    <span class="function">cidr_blocks</span> = [<span class="string">"0.0.0.0/0"</span>]
+  }
+
+  <span class="function">egress</span> {
+    <span class="function">from_port</span>   = 0
+    <span class="function">to_port</span>     = 0
+    <span class="function">protocol</span>    = <span class="string">"-1"</span>
+    <span class="function">cidr_blocks</span> = [<span class="string">"0.0.0.0/0"</span>]
+  }
+}
+
+<span class="keyword">resource</span> <span class="string">"aws_instance"</span> <span class="string">"web"</span> {
+  <span class="function">ami</span>                    = <span class="string">"ami-0c55b159cbfafe1f0"</span>
+  <span class="function">instance_type</span>           = <span class="string">"t2.micro"</span>
+  <span class="function">subnet_id</span>               = aws_subnet.public.id
+  <span class="function">vpc_security_group_ids</span>  = [aws_security_group.web.id]
+  <span class="function">key_name</span>                = var.key_name
+
+  <span class="function">user_data</span> = &lt;&lt;-EOF
+    #!/bin/bash
+    yum install -y nginx
+    systemctl start nginx
+  EOF
+
+  <span class="function">tags</span> = { <span class="function">Name</span> = <span class="string">"tf-web"</span> }
+}
+
+<span class="keyword">output</span> <span class="string">"public_ip"</span> {
+  <span class="function">value</span> = aws_instance.web.public_ip
+}</code></pre>
+
+<p>Apply this, and you'll get a working Nginx server with its IP printed in the terminal.</p>
+
+<h2>Variables and Outputs</h2>
+
+<p>Don't hardcode values. Use variables for anything that changes between environments:</p>
+
+<pre><code><span class="comment"># variables.tf</span>
+<span class="keyword">variable</span> <span class="string">"environment"</span> {
+  <span class="function">type</span>    = string
+  <span class="function">default</span> = <span class="string">"dev"</span>
+}
+
+<span class="keyword">variable</span> <span class="string">"instance_count"</span> {
+  <span class="function">type</span>    = number
+  <span class="function">default</span> = 1
+}
+
+<span class="comment"># Override with terraform apply -var="environment=prod"</span></code></pre>
+
+<p>Outputs expose useful values after apply — IPs, IDs, URLs:</p>
+
+<pre><code><span class="keyword">output</span> <span class="string">"server_url"</span> {
+  <span class="function">value</span> = <span class="string">"http://${aws_instance.web.public_ip}"</span>
+}</code></pre>
+
+<h2>Modules: Reusable Infrastructure</h2>
+
+<p>When you copy-paste the same resource blocks across projects, it's time for modules. A module is just a directory of .tf files:</p>
+
+<pre><code><span class="comment"># Use a community module</span>
+<span class="keyword">module</span> <span class="string">"vpc"</span> {
+  <span class="function">source</span>  = <span class="string">"terraform-aws-modules/vpc/aws"</span>
+  <span class="function">version</span> = <span class="string">"5.0.0"</span>
+
+  <span class="function">name</span> = <span class="string">"my-vpc"</span>
+  <span class="function">cidr</span> = <span class="string">"10.0.0.0/16"</span>
+
+  <span class="function">azs</span>             = [<span class="string">"us-east-1a"</span>, <span class="string">"us-east-1b"</span>]
+  <span class="function">private_subnets</span> = [<span class="string">"10.0.1.0/24"</span>, <span class="string">"10.0.2.0/24"</span>]
+  <span class="function">public_subnets</span>  = [<span class="string">"10.0.101.0/24"</span>, <span class="string">"10.0.102.0/24"</span>]
+}</code></pre>
+
+<p>The Terraform Registry has thousands of community modules. Don't reinvent the wheel.</p>
+
+<h2>Pitfalls to Avoid</h2>
+
+<ul>
+<li><strong>Editing state manually</strong> — use <code>terraform state mv</code> or <code>terraform state rm</code>, never hand-edit the JSON.</li>
+<li><strong>No remote backend</strong> — local state files get lost. Use S3, Terraform Cloud, or any remote backend from day one.</li>
+<li><strong>Skipping plan</strong> — always run <code>terraform plan</code> before apply. One typo can delete your production database.</li>
+<li><strong>Hardcoding secrets</strong> — use <code>var</code> with sensitive flag, or better, pull from AWS Secrets Manager / Vault.</li>
+<li><strong>No locking</strong> — enable state locking (DynamoDB for S3) to prevent concurrent applies from corrupting state.</li>
+</ul>
+
+<h2>Essential Commands</h2>
+
+<table style="width:100%;border-collapse:collapse;margin:1rem 0;font-size:.9rem">
+<tr><th style="text-align:left;padding:.5rem;border-bottom:1px solid #30363d;color:#8b949e">Command</th><th style="text-align:left;padding:.5rem;border-bottom:1px solid #30363d;color:#8b949e">What it does</th></tr>
+<tr><td style="padding:.5rem;border-bottom:1px solid #21262d"><code>terraform init</code></td><td style="padding:.5rem;border-bottom:1px solid #21262d">Initialize workspace, download providers</td></tr>
+<tr><td style="padding:.5rem;border-bottom:1px solid #21262d"><code>terraform plan</code></td><td style="padding:.5rem;border-bottom:1px solid #21262d">Preview changes without applying</td></tr>
+<tr><td style="padding:.5rem;border-bottom:1px solid #21262d"><code>terraform apply</code></td><td style="padding:.5rem;border-bottom:1px solid #21262d">Create/update/destroy resources</td></tr>
+<tr><td style="padding:.5rem;border-bottom:1px solid #21262d"><code>terraform destroy</code></td><td style="padding:.5rem;border-bottom:1px solid #21262d">Remove all managed resources</td></tr>
+<tr><td style="padding:.5rem;border-bottom:1px solid #21262d"><code>terraform fmt</code></td><td style="padding:.5rem;border-bottom:1px solid #21262d">Auto-format .tf files</td></tr>
+<tr><td style="padding:.5rem;border-bottom:1px solid #21262d"><code>terraform validate</code></td><td style="padding:.5rem;border-bottom:1px solid #21262d">Check syntax and configuration</td></tr>
+<tr><td style="padding:.5rem;border-bottom:1px solid #21262d"><code>terraform import</code></td><td style="padding:.5rem;border-bottom:1px solid #21262d">Bring existing resources under management</td></tr>
+</table>
+
+<h2>Summary</h2>
+
+<p>Terraform replaces clicking through cloud consoles with a repeatable, version-controlled workflow. Start with a single resource file, use <code>plan</code> before every <code>apply</code>, store state remotely, and modularize when patterns repeat. The initial investment in learning HCL pays off the first time you need to replicate an environment — from minutes of clicking to a single <code>terraform apply</code>.</p>
+
+<p>Next steps: try <code>terraform destroy</code> to clean up, then rebuild from scratch to prove it's reproducible. That's the whole point.</p>
+</article>
+
+<footer>
+<p><a href="../index.html">← Back to Home</a></p>
+<p>© 2026 DevOpsDaily · <a href="https://github.com/toothbrushroot/auto-blog">GitHub</a></p>
+</footer>
+</div>
+</body>
+</html>
