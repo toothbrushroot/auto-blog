@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A practical guide to centralized logging — architecture comparison, Docker Compose setups, LogQL queries, and production best practices for choosing between ELK and Loki.">
+<title>Centralized Logging for DevOps: ELK Stack vs Grafana Loki - DevOpsDaily</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.8;font-size:1.05rem}
+.container{max-width:750px;margin:0 auto;padding:2rem 1rem}
+nav{margin-bottom:1rem}
+nav a{color:#58a6ff;text-decoration:none;font-size:.9rem}
+h1{font-size:2rem;color:#f0f6fc;margin:.5rem 0 1.5rem;line-height:1.3}
+.date{color:#8b949e;font-size:.9rem;margin-bottom:2rem}
+article h2{color:#f0f6fc;font-size:1.4rem;margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid #21262d}
+article h3{color:#f0f6fc;font-size:1.15rem;margin:1.5rem 0 .5rem}
+article p{margin-bottom:1rem;color:#b1bac4}
+article code{background:#21262d;padding:.15rem .4rem;border-radius:3px;font-size:.9rem;color:#ffa657}
+article pre{background:#161b22;border:1px solid #21262d;border-radius:6px;padding:1rem;overflow-x:auto;margin-bottom:1.5rem;font-size:.9rem}
+article pre code{background:none;padding:0;color:#c9d1d9}
+article a{color:#58a6ff}
+article ul,article ol{margin:0 0 1rem 1.5rem;color:#b1bac4}
+article li{margin-bottom:.3rem}
+article blockquote{border-left:3px solid #30363d;padding-left:1rem;color:#8b949e;margin-bottom:1rem;font-style:italic}
+footer{text-align:center;padding:2rem;color:#484f58;font-size:.85rem;border-top:1px solid #21262d;margin-top:3rem}
+footer a{color:#484f58}
+</style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Centralized Logging for DevOps: ELK Stack vs Grafana Loki",
+  "description": "A practical guide to centralized logging — architecture comparison, Docker Compose setups, LogQL queries, and production best practices for choosing between ELK and Loki.",
+  "datePublished": "2026-08-01",
+  "dateModified": "2026-08-01",
+  "author": {"@type": "Organization", "name": "DevOpsDaily"},
+  "publisher": {"@type": "Organization", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"},
+  "url": "https://toothbrushroot.github.io/auto-blog/posts/centralized-logging-elk-loki.html",
+  "isPartOf": {"@type": "Blog", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"}
+}
+</script>
+<meta property="og:title" content="Centralized Logging for DevOps: ELK Stack vs Grafana Loki">
+<meta property="og:description" content="A practical guide to centralized logging — architecture comparison, Docker Compose setups, LogQL queries, and production best practices for choosing between ELK and Loki.">
+<meta property="og:url" content="https://toothbrushroot.github.io/auto-blog/posts/centralized-logging-elk-loki.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="DevOpsDaily">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Centralized Logging for DevOps: ELK Stack vs Grafana Loki">
+<meta name="twitter:description" content="A practical guide to centralized logging — architecture comparison, Docker Compose setups, LogQL queries, and production best practices for choosing between ELK and Loki.">
+<link rel="canonical" href="https://toothbrushroot.github.io/auto-blog/posts/centralized-logging-elk-loki.html">
+</head>
+<body>
+<div class="container">
+<nav><a href="../index.html">← Back to DevOpsDaily</a></nav>
+<h1>Centralized Logging for DevOps: ELK Stack vs Grafana Loki</h1>
+<div class="date">August 1, 2026 · 9 min read</div>
+<article>
+
+<p>Your application is spread across 20 containers. When something breaks at 3 AM, you need to know <strong>what</strong> happened, <strong>where</strong>, and <strong>when</strong> — without SSHing into every host and grepping log files. That's what centralized logging solves. The two dominant open-source options are the <strong>ELK Stack</strong> (Elasticsearch, Logstash, Kibana) and <strong>Grafana Loki</strong>. They look similar on the surface, but they're built on completely different philosophies. This guide breaks down the trade-offs and shows you working setups for both.</p>
+
+<h2>The Core Difference: Index Everything vs Label Everything</h2>
+
+<p>ELK <strong>indexes the full content</strong> of every log line. Elasticsearch parses, tokenizes, and stores each field, which makes full-text search instant — but storage is expensive. Loki takes the opposite approach: it <strong>indexes only labels</strong> (like <code>app</code>, <code>namespace</code>, <code>pod</code>) and stores the raw log content as compressed blocks. Queries still scan the data, but with chunk compression and object storage backing, Loki is dramatically cheaper at scale.</p>
+
+<blockquote>Rule of thumb: ELK if you need deep field-level analytics and alerting on structured data. Loki if you mostly need "grep across all my servers, fast and cheap."</blockquote>
+
+<h2>ELK Stack Setup with Docker Compose</h2>
+
+<p>A minimal ELK for development can run in a single Compose file. Note the <code>ES_JAVA_OPTS</code> — Elasticsearch is a JVM app and will eat your RAM if you let it.</p>
+
+<pre><code>services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.14.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports: ["9200:9200"]
+    volumes: [esdata:/usr/share/elasticsearch/data]
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.14.0
+    depends_on: [elasticsearch]
+    volumes:
+      - ./logstash.conf:/usr/share/logstash/pipeline/logstash.conf
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.14.0
+    depends_on: [elasticsearch]
+    ports: ["5601:5601"]
+volumes:
+  esdata:</code></pre>
+
+<p>Logstash's job is to parse incoming logs (from Filebeat, syslog, or HTTP) and transform them before indexing. A classic pipeline:</p>
+
+<pre><code>input { beats { port =&gt; 5044 } }
+filter {
+  grok {
+    match =&gt; { "message" =&gt; "%{TIMESTAMP_ISO8601:ts} %{LOGLEVEL:level} %{GREEDYDATA:msg}" }
+  }
+  date { match =&gt; [ "ts", "ISO8601" ] }
+}
+output { elasticsearch { hosts =&gt; ["elasticsearch:9200"] } }</code></pre>
+
+<p>You query it in Kibana with KQL — for example <code>level: "ERROR" and service: "payment"</code> — and get results in milliseconds because every field is indexed.</p>
+
+<h2>Loki Setup with Docker Compose</h2>
+
+<p>Loki is simpler to run because it has no Java and no separate shipper requirement — Promtail scrapes Docker logs directly. A minimal single-binary Loki (v3 mode) plus Promtail and Grafana:</p>
+
+<pre><code>services:
+  loki:
+    image: grafana/loki:3.2.0
+    command: -config.file=/etc/loki/local-config.yaml
+    ports: ["3100:3100"]
+    volumes: [loki-data:/loki]
+  promtail:
+    image: grafana/promtail:3.2.0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./promtail.yaml:/etc/promtail/promtail.yaml
+  grafana:
+    image: grafana/grafana:11.1.0
+    ports: ["3000:3000"]
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+volumes:
+  loki-data:</code></pre>
+
+<p>Promtail auto-discovers containers and attaches Docker labels as Loki labels:</p>
+
+<pre><code>scrape_configs:
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+    relabel_configs:
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        target_label: service
+      - source_labels: [__meta_docker_container_name]
+        target_label: container</code></pre>
+
+<p>Queries use <strong>LogQL</strong>. Select logs by labels, then filter with a stream selector and line expressions:</p>
+
+<pre><code>{service="payment"} |= "ERROR" | json | level="error"</code></pre>
+
+<p>LogQL v2 adds powerful aggregation — counting errors per service over time:</p>
+
+<pre><code>sum by (service) (count_over_time({level="error"}[5m]))</code></pre>
+
+<h2>Head-to-Head Comparison</h2>
+
+<table style="width:100%;border-collapse:collapse;margin-bottom:1.5rem;color:#b1bac4">
+<tr style="background:#161b22;color:#f0f6fc"><th style="padding:.5rem;border:1px solid #21262d">Aspect</th><th style="padding:.5rem;border:1px solid #21262d">ELK</th><th style="padding:.5rem;border:1px solid #21262d">Loki</th></tr>
+<tr><td style="padding:.5rem;border:1px solid #21262d">Indexing</td><td style="padding:.5rem;border:1px solid #21262d">Full-text, all fields</td><td style="padding:.5rem;border:1px solid #21262d">Labels only</td></tr>
+<tr><td style="padding:.5rem;border:1px solid #21262d">Storage cost</td><td style="padding:.5rem;border:1px solid #21262d">High (indexes dominate)</td><td style="padding:.5rem;border:1px solid #21262d">Low (compressed chunks + object storage)</td></tr>
+<tr><td style="padding:.5rem;border:1px solid #21262d">Query speed</td><td style="padding:.5rem;border:1px solid #21262d">Instant full-text</td><td style="padding:.5rem;border:1px solid #21262d">Label-filtered scan</td></tr>
+<tr><td style="padding:.5rem;border:1px solid #21262d">Complexity</td><td style="padding:.5rem;border:1px solid #21262d">High (3+ components, JVM tuning)</td><td style="padding:.5rem;border:1px solid #21262d">Low (single binary)</td></tr>
+<tr><td style="padding:.5rem;border:1px solid #21262d">Best for</td><td style="padding:.5rem;border:1px solid #21262d">Structured data, SIEM, field analytics</td><td style="padding:.5rem;border:1px solid #21262d">Kubernetes pod logs, cost-sensitive scale</td></tr>
+</table>
+
+<h2>Production Best Practices</h2>
+
+<ul>
+<li><strong>Start with Loki for Kubernetes.</strong> Loki was designed around Kubernetes label semantics (namespace, pod, container). The Promtail/K8s integration is mature; ELK on K8s requires more tuning.</li>
+<li><strong>Pin retention with a storage budget.</strong> Loki: set <code>retention_period</code> in config. ELK: use Index Lifecycle Management (ILM) to roll and delete old indices automatically.</li>
+<li><strong>Never ship secrets.</strong> Log redaction matters — filter passwords, tokens, and PII at the shipper (Logstash filter / Promtail pipeline stage) before they hit storage.</li>
+<li><strong>Structure your logs.</strong> JSON logs are dramatically easier to query in both systems than multiline text. Use a JSON formatter in your app.</li>
+<li><strong>Watch cardinality in Loki.</strong> A label like <code>request_id</code> with millions of unique values will destroy performance. Keep labels to tens of distinct values.</li>
+<li><strong>Alert on top of both.</strong> ELK: Watcher or ElastAlert. Loki: Grafana alerting with LogQL metric queries — no extra component needed.</li>
+</ul>
+
+<h2>Which One Should You Choose?</h2>
+
+<p>For a small team running Docker Compose workloads, <strong>Loki + Grafana is the pragmatic default</strong>: one binary to run, cheap storage, and you probably already use Grafana for metrics. Reach for <strong>ELK</strong> when you need full-text search over structured fields, security analytics (SIEM), or deep Kibana visualizations — and you have the ops capacity to run and tune Elasticsearch in production.</p>
+
+<p>Both stacks are legitimate. The mistake is choosing one without considering your storage budget and query patterns. Logs grow forever — pick the architecture you can afford to keep.</p>
+
+</article>
+<footer><p><a href="../index.html">← Back to DevOpsDaily</a></p><p>DevOpsDaily · centralized logging · ELK · Loki · LogQL</p></footer>
+</div>
+</body>
+</html>
