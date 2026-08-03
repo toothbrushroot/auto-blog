@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A practical container security guide for DevOps teams — image scanning, running as non-root, read-only root filesystems, seccomp, secrets management, and runtime threat detection with real examples.">
+<title>Container Security: A Practical Guide for DevOps Teams - DevOpsDaily</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.8;font-size:1.05rem}
+.container{max-width:750px;margin:0 auto;padding:2rem 1rem}
+nav{margin-bottom:1rem}
+nav a{color:#58a6ff;text-decoration:none;font-size:.9rem}
+h1{font-size:2rem;color:#f0f6fc;margin:.5rem 0 1.5rem;line-height:1.3}
+.date{color:#8b949e;font-size:.9rem;margin-bottom:2rem}
+article h2{color:#f0f6fc;font-size:1.4rem;margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid #21262d}
+article h3{color:#f0f6fc;font-size:1.15rem;margin:1.5rem 0 .5rem}
+article p{margin-bottom:1rem;color:#b1bac4}
+article code{background:#21262d;padding:.15rem .4rem;border-radius:3px;font-size:.9rem;color:#ffa657}
+article pre{background:#161b22;border:1px solid #21262d;border-radius:6px;padding:1rem;overflow-x:auto;margin-bottom:1.5rem;font-size:.9rem}
+article pre code{background:none;padding:0;color:#c9d1d9}
+article a{color:#58a6ff}
+article ul,article ol{margin:0 0 1rem 1.5rem;color:#b1bac4}
+article li{margin-bottom:.3rem}
+article blockquote{border-left:3px solid #30363d;padding-left:1rem;color:#8b949e;margin-bottom:1rem;font-style:italic}
+footer{text-align:center;padding:2rem;color:#484f58;font-size:.85rem;border-top:1px solid #21262d;margin-top:3rem}
+footer a{color:#484f58}
+</style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Container Security: A Practical Guide for DevOps Teams",
+  "description": "A practical container security guide for DevOps teams — image scanning, running as non-root, read-only root filesystems, seccomp, secrets management, and runtime threat detection with real examples.",
+  "datePublished": "2026-08-03",
+  "dateModified": "2026-08-03",
+  "author": {"@type": "Organization", "name": "DevOpsDaily"},
+  "publisher": {"@type": "Organization", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"},
+  "url": "https://toothbrushroot.github.io/auto-blog/posts/container-security-practical-guide.html",
+  "isPartOf": {"@type": "Blog", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"}
+}
+</script>
+<meta property="og:title" content="Container Security: A Practical Guide for DevOps Teams">
+<meta property="og:description" content="A practical container security guide for DevOps teams — image scanning, running as non-root, read-only root filesystems, seccomp, secrets management, and runtime threat detection with real examples.">
+<meta property="og:url" content="https://toothbrushroot.github.io/auto-blog/posts/container-security-practical-guide.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="DevOpsDaily">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Container Security: A Practical Guide for DevOps Teams">
+<meta name="twitter:description" content="A practical container security guide for DevOps teams — image scanning, running as non-root, read-only root filesystems, seccomp, secrets management, and runtime threat detection with real examples.">
+<link rel="canonical" href="https://toothbrushroot.github.io/auto-blog/posts/container-security-practical-guide.html">
+</head>
+<body>
+<div class="container">
+<nav><a href="../index.html">← Back to DevOpsDaily</a></nav>
+<h1>Container Security: A Practical Guide for DevOps Teams</h1>
+<div class="date">August 3, 2026 · 8 min read</div>
+<article>
+
+<p>Here's a question every DevOps engineer eventually faces: <em>"Our containers are running in production — how do we know they're actually secure?"</em> The uncomfortable truth is that most container security incidents aren't sophisticated zero-day exploits. They're misconfigurations: images running as root, secrets baked into layers, capabilities that should never have been granted, and images with known CVEs shipped straight to production.</p>
+
+<p>This guide walks through the container security measures that matter most, in the order you should implement them. Every section has a concrete, copy-pasteable example you can adopt today.</p>
+
+<h2>1. Start with the Image: Scan Everything, Every Time</h2>
+
+<p>Your image is the attack surface. If it contains a vulnerable library, every deployment inherits that risk. Scanning should happen in two places: in CI before the image is pushed, and in the registry on a schedule (new CVEs are published daily, long after your image was built).</p>
+
+<pre><code># Trivy in CI — fail the build on critical/high findings
+trivy image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed \
+  myapp:${IMAGE_TAG}
+
+# Scan the running image on demand
+docker scan myapp:latest</code></pre>
+
+<p>Trivy, Grype, and Snyk are all solid choices. The key is making the scan <strong>block the pipeline</strong> — a scan that only warns is a scan that gets ignored. Pair it with a base image policy: prefer minimal distroless or Alpine images. Fewer packages means fewer CVEs, period.</p>
+
+<blockquote>An image that took 10 minutes to build should not take 2 minutes to ship without being scanned. Put the scan between the build and the push.</blockquote>
+
+<h2>2. Never Run as Root</h2>
+
+<p>By default, a container runs as root inside its namespace. If an attacker escapes the container, they inherit root privileges on the host's user namespace — and a single misconfigured mount can turn that into full host compromise. The fix is almost free:</p>
+
+<pre><code># Dockerfile: create a non-root user
+FROM node:20-slim
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+USER appuser
+COPY --chown=appuser:appuser . /app
+WORKDIR /app
+CMD ["node", "server.js"]</code></pre>
+
+<p>In Kubernetes, enforce it at the platform level so developers can't forget:</p>
+
+<pre><code>securityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]</code></pre>
+
+<p>That block is the single highest-value security change you can make in a pod spec. <code>readOnlyRootFilesystem</code> stops a compromised process from writing to its own filesystem (any write attempts fail loudly), and dropping <code>ALL</code> capabilities strips the kernel privileges most apps never need. If your app must write to disk, mount an <code>emptyDir</code> volume at the specific path.</p>
+
+<h2>3. Lock Down the Kernel: seccomp and AppArmor</h2>
+
+<p>Containers share the host kernel. seccomp filters the syscalls a process can make — if an exploit tries <code>mount()</code> or <code>ptrace()</code> and they're not in the allowlist, the syscall returns <code>EPERM</code> instead of executing. Docker's default profile blocks roughly 44 dangerous syscalls and is a genuine control, but for production you want your own stricter profile.</p>
+
+<pre><code># docker run with a custom seccomp profile
+docker run --security-opt seccomp=./seccomp-profile.json myapp
+
+# Kubernetes: reference a profile from the node's /var/lib/kubelet/seccomp/
+securityContext:
+  seccompProfile:
+    type: Localhost
+    localhostProfile: profiles/audit.json</code></pre>
+
+<p>Start with the runtime default profile, run your app under load, then record which syscalls it actually uses (<code>strace -c</code> is your friend) and build a minimal allowlist. AppArmor on Ubuntu hosts and SELinux on RHEL/CentOS provide the same idea at the LSM layer — Kubernetes supports both via <code>appArmorProfile</code> and <code>seLinuxOptions</code>. Defense in depth means layering these, not picking one.</p>
+
+<h2>4. Secrets Never Belong in Images</h2>
+
+<p>The classic mistake: <code>ENV DB_PASSWORD=supersecret</code> in the Dockerfile. That secret is now in every image layer, in every registry copy, and in <code>docker history</code> forever — even if you change it later. Purging it means rebuilding the entire image chain. Secrets must be injected at runtime:</p>
+
+<pre><code># Kubernetes: mount secrets as files, not env vars when possible
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-credentials
+type: Opaque
+stringData:
+  password: "change-me-now"
+---
+# In your deployment
+env:
+  - name: DB_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: db-credentials
+        key: password</code></pre>
+
+<p>For anything beyond pet projects, use a dedicated secrets manager — Vault, AWS Secrets Manager, or GCP Secret Manager — and let your app fetch credentials at startup instead of storing them anywhere in the cluster. And if you ever accidentally commit a secret, rotate it immediately and treat it as compromised. There's no such thing as "minor exposure."</p>
+
+<h2>5. Watch What Happens at Runtime</h2>
+
+<p>Image scanning finds known vulnerabilities. It cannot catch novel behavior — a reverse shell, an unexpected <code>curl</code> to an external IP, a process spawning from <code>/tmp</code>. That's runtime detection's job, and Falco is the standard open-source choice. Falco hooks into the kernel (eBPF) and alerts on suspicious syscall patterns:</p>
+
+<pre><code># Example Falco rule — shell inside a container is a red flag
+- rule: Terminal shell in container
+  desc: A shell was spawned in a container (potential container escape)
+  condition: >
+    spawned_process and container and shell_procs and
+    not proc.name in (docker_execve) and not user_expected_terminal
+  output: "Shell spawned in container (user=%user.name container=%container.id shell=%proc.name)"
+  priority: WARNING</code></pre>
+
+<p>Falco's default ruleset already covers the most common attack patterns — spawning shells, reading sensitive files, unexpected outbound connections. Wire its alerts into your alerting stack (the same Prometheus/Alertmanager or Grafana pipeline you already run) so a suspicious event pages someone, not just a log line.</p>
+
+<h2>6. Sign Your Images and Pin Your Dependencies</h2>
+
+<p>Supply chain attacks are the fastest-growing container threat. The workflow: someone compromises a popular open-source package, you pull an image that includes it, and your "trusted" build now contains malware. Two countermeasures matter most:</p>
+
+<ul>
+<li><strong>Pin everything.</strong> Use exact base image digests (<code>node:20-slim@sha256:...</code>) and lockfiles for your dependencies. <code>latest</code> tags are nondeterministic by design — the image you tested is not the image you deployed.</li>
+<li><strong>Sign your images.</strong> <code>cosign</code> from the Sigstore project signs images with keyless signatures tied to your OIDC identity, and policy engines (Kyverno, OPA/Gatekeeper) can require a valid signature before admitting a pod:</li>
+</ul>
+
+<pre><code># Sign on push
+cosign sign ghcr.io/myorg/myapp@sha256:abcdef...
+
+# Verify before deploy
+cosign verify ghcr.io/myorg/myapp@sha256:abcdef... \
+  --certificate-identity-regexp ".*@myorg\.com" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com</code></pre>
+
+<p>With Kyverno's <code>verifyImages</code> rule, unsigned images are rejected at admission time — the cluster refuses to run anything you didn't sign, no matter who tries to deploy it.</p>
+
+<h2>7. The 10-Minute Security Baseline</h2>
+
+<p>Don't try to implement everything at once. Here's the order that gives you the most risk reduction per hour of effort:</p>
+
+<ol>
+<li><strong>Add image scanning to CI</strong> and make critical findings block the pipeline. (30 minutes)</li>
+<li><strong>Apply the hardened <code>securityContext</code></strong> — non-root, read-only rootfs, drop ALL capabilities — to every workload. (1 hour)</li>
+<li><strong>Move secrets out of images</strong> into Kubernetes Secrets or a secrets manager. (2 hours)</li>
+<li><strong>Deploy Falco</strong> with default rules and hook alerts into your existing monitoring. (2 hours)</li>
+<li><strong>Add image signing</strong> with cosign and an admission policy once the rest is stable. (half a day)</li>
+</ol>
+
+<p>Most teams stop after step 2 and have already eliminated the majority of realistic attack paths. Container security isn't about buying an expensive platform — it's about the boring, consistent application of these fundamentals. Do them all, and your containers stop being the weakest link in your infrastructure.</p>
+
+</article>
+<footer><p>© 2026 DevOpsDaily · <a href="../index.html">Home</a></p></footer>
+</div>
+<script data-goatcounter="https://devopsdailyblog.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+</body>
+</html>
