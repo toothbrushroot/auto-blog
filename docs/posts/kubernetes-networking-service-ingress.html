@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A practical guide to Kubernetes networking — Services, Ingress, and NetworkPolicies with real YAML examples, traffic flow explanations, and production debugging commands.">
+<title>Kubernetes Networking Explained: Services, Ingress, and NetworkPolicies - DevOpsDaily</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.8;font-size:1.05rem}
+.container{max-width:750px;margin:0 auto;padding:2rem 1rem}
+nav{margin-bottom:1rem}
+nav a{color:#58a6ff;text-decoration:none;font-size:.9rem}
+h1{font-size:2rem;color:#f0f6fc;margin:.5rem 0 1.5rem;line-height:1.3}
+.date{color:#8b949e;font-size:.9rem;margin-bottom:2rem}
+article h2{color:#f0f6fc;font-size:1.4rem;margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid #21262d}
+article h3{color:#f0f6fc;font-size:1.15rem;margin:1.5rem 0 .5rem}
+article p{margin-bottom:1rem;color:#b1bac4}
+article code{background:#21262d;padding:.15rem .4rem;border-radius:3px;font-size:.9rem;color:#ffa657}
+article pre{background:#161b22;border:1px solid #21262d;border-radius:6px;padding:1rem;overflow-x:auto;margin-bottom:1.5rem;font-size:.9rem}
+article pre code{background:none;padding:0;color:#c9d1d9}
+article a{color:#58a6ff}
+article ul,article ol{margin:0 0 1rem 1.5rem;color:#b1bac4}
+article li{margin-bottom:.3rem}
+article blockquote{border-left:3px solid #30363d;padding-left:1rem;color:#8b949e;margin-bottom:1rem;font-style:italic}
+footer{text-align:center;padding:2rem;color:#484f58;font-size:.85rem;border-top:1px solid #21262d;margin-top:3rem}
+footer a{color:#484f58}
+</style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Kubernetes Networking Explained: Services, Ingress, and NetworkPolicies",
+  "description": "A practical guide to Kubernetes networking — Services, Ingress, and NetworkPolicies with real YAML examples, traffic flow explanations, and production debugging commands.",
+  "datePublished": "2026-08-05",
+  "dateModified": "2026-08-05",
+  "author": {"@type": "Organization", "name": "DevOpsDaily"},
+  "publisher": {"@type": "Organization", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"},
+  "url": "https://toothbrushroot.github.io/auto-blog/posts/kubernetes-networking-service-ingress.html",
+  "isPartOf": {"@type": "Blog", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"}
+}
+</script>
+<meta property="og:title" content="Kubernetes Networking Explained: Services, Ingress, and NetworkPolicies">
+<meta property="og:description" content="A practical guide to Kubernetes networking — Services, Ingress, and NetworkPolicies with real YAML examples, traffic flow explanations, and production debugging commands.">
+<meta property="og:url" content="https://toothbrushroot.github.io/auto-blog/posts/kubernetes-networking-service-ingress.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="DevOpsDaily">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Kubernetes Networking Explained: Services, Ingress, and NetworkPolicies">
+<meta name="twitter:description" content="A practical guide to Kubernetes networking — Services, Ingress, and NetworkPolicies with real YAML examples, traffic flow explanations, and production debugging commands.">
+<link rel="canonical" href="https://toothbrushroot.github.io/auto-blog/posts/kubernetes-networking-service-ingress.html">
+</head>
+<body>
+<div class="container">
+<nav><a href="../index.html">← Back to DevOpsDaily</a></nav>
+<h1>Kubernetes Networking Explained: Services, Ingress, and NetworkPolicies</h1>
+<div class="date">August 5, 2026 · 8 min read</div>
+<article>
+
+<p>Your pods are running. You can <code>kubectl exec</code> into them. But the moment you try to reach one pod from another — or expose your app to the internet — everything falls apart. Welcome to Kubernetes networking, the layer that confuses everyone, including people who've been running clusters for years.</p>
+
+<p>The good news: there are only three abstractions you need to understand. <strong>Services</strong> give pods a stable network identity. <strong>Ingress</strong> routes external HTTP traffic into your cluster. <strong>NetworkPolicies</strong> decide who is allowed to talk to whom. Master these three and 90% of your networking pain disappears.</p>
+
+<h2>1. Why Pod IPs Are Useless (and Services Fix That)</h2>
+
+<p>A pod's IP address is ephemeral. Restart the pod, get a new IP. Scale from 3 replicas to 10, and you now have 7 new IPs to keep track of. Nothing in your code should ever hardcode a pod IP.</p>
+
+<p>A <strong>Service</strong> is a stable virtual IP (ClusterIP) in front of a set of pods. The Service selector matches pod labels, and the kube-proxy component programs iptables or IPVS rules to load-balance traffic across the matching pods.</p>
+
+<pre><code>apiVersion: v1
+kind: Service
+metadata:
+  name: api
+spec:
+  selector:
+    app: api
+  ports:
+  - port: 80          # port clients use
+    targetPort: 8080  # port the container listens on</code></pre>
+
+<p>Now any pod in the cluster can reach your API at <code>http://api:80</code>. That's it. The Service name becomes a DNS name — Kubernetes runs a built-in DNS service (CoreDNS) that resolves Service names automatically.</p>
+
+<h2>2. Service Types: When to Use What</h2>
+
+<p>You'll see four Service types in the wild. Each solves a different problem:</p>
+
+<table style="width:100%;border-collapse:collapse;margin-bottom:1.5rem;color:#b1bac4">
+<tr style="border-bottom:1px solid #21262d"><th style="text-align:left;padding:.5rem;color:#f0f6fc">Type</th><th style="text-align:left;padding:.5rem;color:#f0f6fc">Reachable From</th><th style="text-align:left;padding:.5rem;color:#f0f6fc">Use Case</th></tr>
+<tr style="border-bottom:1px solid #21262d"><td style="padding:.5rem"><code>ClusterIP</code></td><td style="padding:.5rem">Inside cluster only</td><td style="padding:.5rem">Default. Service-to-service communication.</td></tr>
+<tr style="border-bottom:1px solid #21262d"><td style="padding:.5rem"><code>NodePort</code></td><td style="padding:.5rem">Outside via <code>nodeIP:port</code></td><td style="padding:.5rem">Quick dev testing, or when you don't have a cloud load balancer.</td></tr>
+<tr style="border-bottom:1px solid #21262d"><td style="padding:.5rem"><code>LoadBalancer</code></td><td style="padding:.5rem">Public internet</td><td style="padding:.5rem">Cloud clusters (AWS, GCP, Azure). Creates a real LB.</td></tr>
+<tr><td style="padding:.5rem"><code>Headless</code></td><td style="padding:.5rem">Via individual pod DNS</td><td style="padding:.5rem">StatefulSets, databases that need direct pod addressing.</td></tr>
+</table>
+
+<p>For a stateful database, you typically want a headless Service (<code>clusterIP: None</code>). DNS then returns the IP of <em>every</em> matching pod, so your app can connect to <code>db-0.redis</code> directly instead of going through a load balancer — essential when each replica holds different data.</p>
+
+<h2>3. Ingress: One Entry Point for HTTP Traffic</h2>
+
+<p>If you create a <code>LoadBalancer</code> Service for every microservice, you pay for a cloud load balancer per service. Expensive and messy. <strong>Ingress</strong> gives you a single entry point that routes requests based on hostname and path.</p>
+
+<pre><code>apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: main
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: api.example.com
+    http:
+      paths:
+      - path: /v1
+        pathType: Prefix
+        backend:
+          service:
+            name: api
+            port:
+              number: 80
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web
+            port:
+              number: 80</code></pre>
+
+<p>Requests to <code>api.example.com/v1/*</code> go to the <code>api</code> Service; everything else goes to <code>web</code>. Most Ingress controllers (nginx-ingress, Traefik, AWS ALB Ingress Controller) also handle TLS termination — you attach a Secret containing the certificate and the controller takes care of the rest:</p>
+
+<pre><code>spec:
+  tls:
+  - hosts:
+    - api.example.com
+    secretName: api-tls</code></pre>
+
+<p>One Ingress, one IP, any number of hostnames and paths. This is how real production clusters expose dozens of services with a single load balancer.</p>
+
+<h2>4. NetworkPolicies: Default Allow Is a Security Hole</h2>
+
+<p>By default, <strong>every pod can talk to every other pod</strong>. In a production cluster, that's a security nightmare — a compromised frontend can reach your database directly. NetworkPolicies are firewall rules enforced at the CNI layer (Calico, Cilium, Weave).</p>
+
+<p>A deny-by-default policy for the <code>db</code> tier looks like this:</p>
+
+<pre><code>apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-allow-api-only
+spec:
+  podSelector:
+    matchLabels:
+      app: db
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: api
+    ports:
+    - protocol: TCP
+      port: 5432</code></pre>
+
+<p>Once this policy exists, the <code>db</code> pods accept TCP traffic on port 5432 <strong>only</strong> from pods labeled <code>app: api</code>. Everything else is dropped. Add one policy per tier and your cluster goes from flat open network to least-privilege segmentation.</p>
+
+<blockquote>NetworkPolicies are additive per pod — if multiple policies select the same pod, their rules combine (OR). A default-deny policy needs an empty <code>podSelector: {}</code> plus explicit allow rules for everything that should get through.</blockquote>
+
+<h2>5. The Traffic Flow, End to End</h2>
+
+<p>Here's the complete path of a request in a typical setup:</p>
+
+<ol>
+<li>Client hits <code>https://api.example.com</code> → DNS resolves to the cloud load balancer → forwards to the Ingress controller pod.</li>
+<li>The Ingress controller matches the hostname/path against its rules and proxies to the <code>api</code> Service's ClusterIP.</li>
+<li>kube-proxy rewrites the destination to a healthy backend pod's IP using iptables/IPVS rules, distributing load across replicas.</li>
+<li>The pod receives the request on <code>targetPort</code>. If the pod is later restarted or scaled, only the Service's endpoint list changes — clients never notice.</li>
+</ol>
+
+<p>Debugging tip: when traffic "doesn't work", isolate the hop. <code>kubectl get endpoints api</code> tells you if the Service found any pods. <code>kubectl describe pod</code> reveals NetworkPolicy blocks via events. And <code>kubectl run netshoot --rm -it --image nicolaka/netshoot</code> gives you a Swiss-army pod with <code>curl</code>, <code>dig</code>, <code>tcpdump</code>, and <code>nc</code> for testing from inside the cluster.</p>
+
+<h2>6. Production Checklist</h2>
+
+<ul>
+<li><strong>Never hardcode pod IPs.</strong> Always address services by DNS name.</li>
+<li><strong>Prefer Ingress over one LoadBalancer per service.</strong> One entry point, one TLS cert, one cost.</li>
+<li><strong>Enable NetworkPolicies early.</strong> Retrofitting them into a cluster where everything already talks is painful; do it at day one.</li>
+<li><strong>Check <code>kubectl get endpoints</code> first.</strong> Most "networking broken" reports are actually a selector typo — the Service matches zero pods.</li>
+<li><strong>Use headless Services for stateful workloads</strong> and normal ClusterIP for stateless ones.</li>
+</ul>
+
+<h2>Summary</h2>
+
+<p>Kubernetes networking isn't magic — it's three layers with clear jobs. <strong>Services</strong> stabilize pod addressing and load-balance internally. <strong>Ingress</strong> is the single front door for external HTTP traffic, with routing and TLS handled at one point. <strong>NetworkPolicies</strong> turn your cluster's default-open network into a segmented, least-privilege one. Understand which abstraction solves which problem, and the tangle of IPs, ports, and proxies becomes a boring, predictable system you can debug in minutes.</p>
+
+</article>
+<footer><p>© 2026 DevOpsDaily · <a href="../index.html">Home</a></p></footer>
+</div>
+<script data-goatcounter="https://devopsdailyblog.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+</body>
+</html>
