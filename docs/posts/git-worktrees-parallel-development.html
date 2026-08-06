@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Learn how to use Git worktrees to work on multiple branches simultaneously without stashing or switching — a practical DevOps workflow guide.">
+    <title>Git Worktrees: Parallel Development Without the Context Switching | ToothbrushRoot</title>
+    <link rel="canonical" href="https://toothbrushroot.github.io/auto-blog/posts/git-worktrees-parallel-development.html">
+    <meta property="og:title" content="Git Worktrees: Parallel Development Without the Context Switching">
+    <meta property="og:description" content="Learn how to use Git worktrees to work on multiple branches simultaneously without stashing or switching — a practical DevOps workflow guide.">
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://toothbrushroot.github.io/auto-blog/posts/git-worktrees-parallel-development.html">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Git Worktrees: Parallel Development Without the Context Switching">
+    <meta name="twitter:description" content="Learn how to use Git worktrees to work on multiple branches simultaneously without stashing or switching — a practical DevOps workflow guide.">
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "BlogPosting",
+        "headline": "Git Worktrees: Parallel Development Without the Context Switching",
+        "description": "Learn how to use Git worktrees to work on multiple branches simultaneously without stashing or switching — a practical DevOps workflow guide.",
+        "datePublished": "2026-08-06",
+        "dateModified": "2026-08-06",
+        "author": {
+            "@type": "Person",
+            "name": "ToothbrushRoot"
+        },
+        "publisher": {
+            "@type": "Person",
+            "name": "ToothbrushRoot"
+        },
+        "url": "https://toothbrushroot.github.io/auto-blog/posts/git-worktrees-parallel-development.html",
+        "mainEntityOfPage": {
+            "@type": "WebPage",
+            "@id": "https://toothbrushroot.github.io/auto-blog/posts/git-worktrees-parallel-development.html"
+        }
+    }
+    </script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0d1117;
+            color: #c9d1d9;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            line-height: 1.7;
+            padding: 2rem;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1, h2, h3 { color: #e6edf3; margin: 2rem 0 1rem; }
+        h1 { font-size: 2rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; }
+        h2 { font-size: 1.5rem; color: #58a6ff; }
+        h3 { font-size: 1.2rem; color: #ffa657; }
+        p { margin: 1rem 0; }
+        a { color: #58a6ff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        code {
+            background: #161b22;
+            color: #ffa657;
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        pre {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 1rem;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+        pre code { background: none; padding: 0; color: #c9d1d9; }
+        ul, ol { margin: 1rem 0 1rem 2rem; }
+        li { margin: 0.4rem 0; }
+        blockquote {
+            border-left: 4px solid #58a6ff;
+            padding: 0.5rem 1rem;
+            margin: 1rem 0;
+            background: #161b22;
+            border-radius: 0 6px 6px 0;
+        }
+        .meta { color: #8b949e; font-size: 0.9rem; margin-bottom: 2rem; }
+        footer {
+            margin-top: 3rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #30363d;
+            color: #8b949e;
+            font-size: 0.85rem;
+        }
+        footer a { color: #58a6ff; }
+        .tip {
+            background: #161b22;
+            border-left: 4px solid #3fb950;
+            padding: 0.8rem 1rem;
+            margin: 1rem 0;
+            border-radius: 0 6px 6px 0;
+        }
+    </style>
+</head>
+<body>
+    <article>
+        <h1>Git Worktrees: Parallel Development Without the Context Switching</h1>
+        <p class="meta">August 6, 2026 &middot; 8 min read</p>
+
+        <p>If you've ever needed to jump between branches mid-task — fixing a hotfix on <code>main</code> while a feature branch has uncommitted changes — you know the pain. <code>git stash</code>, <code>git checkout</code>, conflicts, lost context. Git worktrees solve this cleanly by letting you check out multiple branches into separate directories, all sharing the same repository.</p>
+
+        <h2>What Is a Git Worktree?</h2>
+
+        <p>A worktree is an additional working directory linked to your main repository. Each worktree has its own checked-out files, staging area, and working tree, but they all share the same <code>.git</code> objects database. This means:</p>
+
+        <ul>
+            <li>No duplicate clones eating disk space</li>
+            <li>Commits in one worktree are instantly visible in others</li>
+            <li>You can work on multiple branches simultaneously</li>
+        </ul>
+
+        <h2>Creating Your First Worktree</h2>
+
+        <p>The basic syntax is straightforward:</p>
+
+        <pre><code># From your repo root
+git worktree add ../hotfix-branch hotfix/urgent-fix
+
+# Or create a new branch directly
+git worktree add -b feature/new-api ../work-new-api main</code></pre>
+
+        <p>This creates a new directory alongside your main repo. You can now <code>cd</code> into it and work independently:</p>
+
+        <pre><code>cd ../hotfix-branch
+# You're now on hotfix/urgent-fix
+# Edit, commit, push — all independent of your main worktree</code></pre>
+
+        <h2>Real-World DevOps Workflows</h2>
+
+        <h3>1. Hotfix While Feature Work Is In Progress</h3>
+
+        <p>The most common scenario. You're deep in a feature branch with uncommitted work, and production is on fire:</p>
+
+        <pre><code># From your feature work directory
+git worktree add ../hotfix ../main
+cd ../hotfix
+git pull origin main
+# Fix, test, commit, push
+git push origin main
+cd ../my-feature-branch
+# Your feature work is untouched</code></pre>
+
+        <h3>2. Review PRs Without Stashing</h3>
+
+        <p>Need to review a teammate's pull request while keeping your work intact?</p>
+
+        <pre><code>git fetch origin
+git worktree add ../pr-review origin/teammate-feature
+cd ../pr-review
+# Review, test, leave comments
+cd ../my-work
+# Back to where you were</code></pre>
+
+        <h3>3. CI/CD Pipeline Testing</h3>
+
+        <p>When testing pipeline changes, you often need to compare behavior between branches:</p>
+
+        <pre><code># Two worktrees for A/B testing pipeline configs
+git worktree add ../pipeline-v1 release/v1
+git worktree add ../pipeline-v2 release/v2
+
+# Run the same test script in each
+cd ../pipeline-v1 && ./ci-test.sh
+cd ../pipeline-v2 && ./ci-test.sh</code></pre>
+
+        <h2>Managing Worktrees</h2>
+
+        <p>List all active worktrees:</p>
+
+        <pre><code>git worktree list
+# /home/user/my-repo              abc1234 [main]
+# /home/user/hotfix               def5678 [hotfix/urgent-fix]
+# /home/user/pr-review            ghi9012 [detached HEAD]</code></pre>
+
+        <p>Remove a worktree when done:</p>
+
+        <pre><code>git worktree remove ../hotfix
+# Or if it has uncommitted changes:
+git worktree remove --force ../hotfix</code></pre>
+
+        <p>Prune stale references to deleted directories:</p>
+
+        <pre><code>git worktree prune</code></pre>
+
+        <h2>Worktree Pitfalls to Avoid</h2>
+
+        <ul>
+            <li><strong>Same branch, two worktrees:</strong> Git won't let you check out the same branch in two worktrees. Create a new branch in one of them instead.</li>
+            <li><strong>Submodules:</strong> Worktrees with submodules can be tricky. Run <code>git submodule update --init</code> in each new worktree.</li>
+            <li><strong>Relative paths in scripts:</strong> If your scripts assume <code>.git</code> is in the current directory, they may break in a worktree. Use <code>git rev-parse --git-dir</code> to find the actual git directory.</li>
+            <li><strong>Orphaned worktrees:</strong> If you manually delete a worktree directory, run <code>git worktree prune</code> to clean up the reference.</li>
+        </ul>
+
+        <h2>Worktrees vs. Clones</h2>
+
+        <p>You might wonder: why not just clone the repo twice? Here's the comparison:</p>
+
+        <ul>
+            <li><strong>Disk space:</strong> Worktrees share object storage. Two clones double your disk usage for a large repo.</li>
+            <li><strong>Speed:</strong> Creating a worktree is nearly instant. Cloning downloads everything again.</li>
+            <li><strong>Consistency:</strong> Worktree commits are immediately visible to each other. Separate clones need a push/pull cycle.</li>
+            <li><strong>Stashes:</strong> Worktrees share the stash reflog, which can be confusing if both try to use <code>git stash</code>.</li>
+        </ul>
+
+        <div class="tip">
+            <strong>💡 Pro Tip:</strong> Use a naming convention for worktree directories. A common pattern is <code>../.worktrees/feature-name</code> to keep them organized and out of the way.
+        </div>
+
+        <h2>Aliasing for Productivity</h2>
+
+        <p>Add these to your <code>~/.gitconfig</code> for faster workflow:</p>
+
+        <pre><code>[alias]
+    wt = worktree
+    wta = worktree add
+    wtl = worktree list
+    wtr = worktree remove
+    wtp = worktree prune</code></pre>
+
+        <p>Now you can use shorthand:</p>
+
+        <pre><code>git wta ../hotfix hotfix/fix
+git wtl
+git wtr ../hotfix</code></pre>
+
+        <h2>Conclusion</h2>
+
+        <p>Git worktrees are one of those features that, once you start using them, you wonder how you ever lived without. They eliminate the friction of branch switching, make code review painless, and let you maintain multiple contexts without mental overhead. For DevOps engineers juggling production fixes, feature development, and CI/CD experiments simultaneously, worktrees are a genuine productivity multiplier.</p>
+
+        <p>Start with one worktree for your next hotfix. You'll never go back to <code>git stash</code> gymnastics.</p>
+
+        <footer>
+            <p><a href="../index.html">← Back to all posts</a></p>
+            <p>Written by <a href="https://github.com/toothbrushroot">ToothbrushRoot</a></p>
+        </footer>
+    </article>
+</body>
+</html>
