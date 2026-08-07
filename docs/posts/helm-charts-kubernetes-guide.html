@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A practical guide to Helm charts for Kubernetes — install, create, customize, and manage application deployments with templates, values, and releases in production.">
+<title>Helm Charts for Kubernetes: A Practical DevOps Guide - DevOpsDaily</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.8;font-size:1.05rem}
+.container{max-width:750px;margin:0 auto;padding:2rem 1rem}
+nav{margin-bottom:1rem}
+nav a{color:#58a6ff;text-decoration:none;font-size:.9rem}
+h1{font-size:2rem;color:#f0f6fc;margin:.5rem 0 1.5rem;line-height:1.3}
+.date{color:#8b949e;font-size:.9rem;margin-bottom:2rem}
+article h2{color:#f0f6fc;font-size:1.4rem;margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid #21262d}
+article h3{color:#f0f6fc;font-size:1.15rem;margin:1.5rem 0 .5rem}
+article p{margin-bottom:1rem;color:#b1bac4}
+article code{background:#21262d;padding:.15rem .4rem;border-radius:3px;font-size:.9rem;color:#ffa657}
+article pre{background:#161b22;border:1px solid #21262d;border-radius:6px;padding:1rem;overflow-x:auto;margin-bottom:1.5rem;font-size:.9rem}
+article pre code{background:none;padding:0;color:#c9d1d9}
+article a{color:#58a6ff}
+article ul,article ol{margin:0 0 1rem 1.5rem;color:#b1bac4}
+article li{margin-bottom:.3rem}
+article blockquote{border-left:3px solid #30363d;padding-left:1rem;color:#8b949e;margin-bottom:1rem;font-style:italic}
+footer{text-align:center;padding:2rem;color:#484f58;font-size:.85rem;border-top:1px solid #21262d;margin-top:3rem}
+footer a{color:#484f58}
+</style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Helm Charts for Kubernetes: A Practical DevOps Guide",
+  "description": "A practical guide to Helm charts for Kubernetes — install, create, customize, and manage application deployments with templates, values, and releases in production.",
+  "datePublished": "2026-08-07",
+  "dateModified": "2026-08-07",
+  "author": {"@type": "Organization", "name": "DevOpsDaily"},
+  "publisher": {"@type": "Organization", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"},
+  "url": "https://toothbrushroot.github.io/auto-blog/posts/helm-charts-kubernetes-guide.html",
+  "isPartOf": {"@type": "Blog", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"}
+}
+</script>
+<meta property="og:title" content="Helm Charts for Kubernetes: A Practical DevOps Guide">
+<meta property="og:description" content="A practical guide to Helm charts for Kubernetes — install, create, customize, and manage application deployments with templates, values, and releases in production.">
+<meta property="og:url" content="https://toothbrushroot.github.io/auto-blog/posts/helm-charts-kubernetes-guide.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="DevOpsDaily">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Helm Charts for Kubernetes: A Practical DevOps Guide">
+<meta name="twitter:description" content="A practical guide to Helm charts for Kubernetes — install, create, customize, and manage application deployments with templates, values, and releases in production.">
+</head>
+<body>
+<div class="container">
+<nav><a href="../index.html">← DevOpsDaily</a></nav>
+<h1>Helm Charts for Kubernetes: A Practical DevOps Guide</h1>
+<div class="date">August 7, 2026</div>
+
+<article>
+
+<p>If you've ever hand-written Kubernetes YAML files for a real application, you know the pain. A simple web app needs a Deployment, a Service, an Ingress, a ConfigMap, maybe a HorizontalPodAutoscaler — and every environment (dev, staging, production) needs slightly different values. Multiply that by ten microservices and you're drowning in copy-pasted YAML.</p>
+
+<p>Helm solves this. It's the package manager for Kubernetes — think <code>apt</code> or <code>brew</code> but for cluster workloads. Instead of managing raw YAML, you work with <strong>charts</strong>: templated, versioned, reusable packages that install with a single command.</p>
+
+<h2>Why Helm Matters</h2>
+
+<p>Without Helm, deploying an app to Kubernetes means maintaining a growing pile of YAML files. Need to change the replica count for staging? Edit the file. Need to add an environment variable? Edit the file. Want to roll back? Hope you kept a copy of the old YAML.</p>
+
+<p>With Helm:</p>
+<ul>
+<li><strong>Templating</strong> — one chart, many environments. Values change, templates stay the same.</li>
+<li><strong>Releases</strong> — every install is tracked. Rollback with one command.</li>
+<li><strong>Package distribution</strong> — share charts via OCI registries or chart repositories.</li>
+<li><strong>Lifecycle management</strong> — hooks for pre-install, post-upgrade, and rollback operations.</li>
+</ul>
+
+<h2>Installing Helm</h2>
+
+<p>On macOS with Homebrew:</p>
+<pre><code>brew install helm</code></pre>
+
+<p>On Linux:</p>
+<pre><code>curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash</code></pre>
+
+<p>Verify the installation:</p>
+<pre><code>helm version
+# version.BuildInfo{Version:"v3.16.x", ...}</code></pre>
+
+<p>Helm 3 is the current major version. If you see references to Tiller, that's Helm 2 — ignore it. Helm 3 removed the server-side component entirely and talks directly to the Kubernetes API.</p>
+
+<h2>Installing Your First Chart</h2>
+
+<p>The fastest way to get started is installing a chart from a public repository. Let's deploy NGINX:</p>
+
+<pre><code># Add the Bitnami repository
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo update
+
+# Install NGINX
+helm install my-nginx bitnami/nginx \
+  --namespace demo --create-namespace \
+  --set service.type=ClusterIP
+
+# Check the release
+helm list -n demo
+kubectl get pods -n demo</code></pre>
+
+<p>That single <code>helm install</code> command created a Deployment, a Service, and all the supporting resources. No YAML files to maintain. To customize values, you can pass them inline with <code>--set</code> or use a values file.</p>
+
+<h2>Understanding Chart Structure</h2>
+
+<p>Create a new chart to see how it works:</p>
+<pre><code>helm create my-app
+tree my-app/</code></pre>
+
+<p>The generated structure:</p>
+<pre><code>my-app/
+├── Chart.yaml          # Chart metadata (name, version, description)
+├── values.yaml         # Default configuration values
+├── charts/             # Dependencies (sub-charts)
+├── templates/
+│   ├── deployment.yaml # Kubernetes resource templates
+│   ├── service.yaml
+│   ├── ingress.yaml
+│   ├── hpa.yaml
+│   ├── serviceaccount.yaml
+│   ├── _helpers.tpl    # Template helpers (partial templates)
+│   ├── NOTES.txt       # Post-install message
+│   └── tests/
+│       └── test-connection.yaml
+└── .helmignore         # Files to exclude when packaging</code></pre>
+
+<p>The key files are <code>Chart.yaml</code> (who am I?), <code>values.yaml</code> (what are my defaults?), and everything under <code>templates/</code> (what do I create in the cluster?).</p>
+
+<h2>Templates: Where the Magic Happens</h2>
+
+<p>Helm templates are Kubernetes YAML files with Go template expressions embedded. Here's a simplified Deployment template:</p>
+
+<pre><code>apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "myapp.fullname" . }}
+  labels:
+    {{- include "myapp.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "myapp.selectorLabels" . | nindent 6 }}
+  template:
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          ports:
+            - containerPort: {{ .Values.service.port }}
+          env:
+            {{- range .Values.env }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}</code></pre>
+
+<p>Every <code>{{ .Values.xxx }}</code> expression pulls from <code>values.yaml</code> or user overrides. This is the core idea: the template describes the <em>shape</em> of your resources, and values fill in the <em>specifics</em>.</p>
+
+<h2>Customizing with Values Files</h2>
+
+<p>Instead of passing dozens of <code>--set</code> flags, create per-environment values files:</p>
+
+<pre><code># values-staging.yaml
+replicaCount: 1
+image:
+  repository: myapp
+  tag: staging-latest
+  pullPolicy: Always
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+# values-production.yaml
+replicaCount: 3
+image:
+  repository: myapp
+  tag: v1.2.0
+  pullPolicy: IfNotPresent
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi</code></pre>
+
+<p>Deploy with the file:</p>
+<pre><code>helm install myapp ./my-app \
+  -f values-production.yaml \
+  -n production --create-namespace</code></pre>
+
+<p>Helm merges values in order: <code>values.yaml</code> (defaults) → <code>-f</code> files (left to right) → <code>--set</code> flags (highest priority). This layering lets you keep a sane base and override only what differs per environment.</p>
+
+<h2>Releases and Rollbacks</h2>
+
+<p>Every <code>helm install</code> creates a <strong>release</strong> — a named deployment with a revision history stored as Kubernetes Secrets.</p>
+
+<pre><code># Upgrade a release
+helm upgrade myapp ./my-app -f values-production.yaml
+
+# See release history
+helm history myapp
+
+# Rollback to revision 2
+helm rollback myapp 2
+
+# Uninstall completely
+helm uninstall myapp -n production</code></pre>
+
+<p>Rollbacks are instant because Helm stores the full manifest of every revision. This alone makes Helm worth adopting — it gives you deployment history without needing an external tool.</p>
+
+<h2>Dependency Management</h2>
+
+<p>Charts can depend on other charts. A common pattern is depending on Redis or PostgreSQL as a sub-chart:</p>
+
+<pre><code># Chart.yaml
+dependencies:
+  - name: redis
+    version: "18.x.x"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled</code></pre>
+
+<pre><code># Update dependencies
+helm dependency update ./my-app
+
+# This downloads the redis chart into charts/</code></pre>
+
+<p>The <code>condition</code> field lets you toggle dependencies per environment. Production might use an external Redis instance while dev uses the bundled sub-chart.</p>
+
+<h2>Packaging and Sharing</h2>
+
+<p>Package your chart for distribution:</p>
+<pre><code># Lint first
+helm lint ./my-app
+
+# Package as a .tgz archive
+helm package ./my-app
+# Creates my-app-0.1.0.tgz
+
+# Push to an OCI registry (GitHub Container Registry, ECR, etc.)
+helm push my-app-0.1.0.tgz oci://ghcr.io/myorg/charts</code></pre>
+
+<p>OCI-based registries are now the standard for chart distribution. No need to maintain a separate chart repository server — your container registry does double duty.</p>
+
+<h2>Debugging Helm Charts</h2>
+
+<p>When things go wrong, these commands save you time:</p>
+
+<pre><code># Render templates locally without installing (dry-run)
+helm template myapp ./my-app -f values-production.yaml
+
+# Dry-run against the cluster (validates against API server)
+helm install myapp ./my-app --dry-run --debug
+
+# See what would change in an upgrade
+helm diff upgrade myapp ./my-app -f values-production.yaml
+# (requires helm-diff plugin: helm plugin install https://github.com/databus23/helm-diff)</code></pre>
+
+<p>The <code>helm template</code> command is invaluable during development — it shows you the exact Kubernetes YAML that will be applied, without touching the cluster. Pair it with <code>helm diff</code> for upgrades and you'll rarely be surprised by what lands in your cluster.</p>
+
+<h2>Summary</h2>
+
+<p>Helm transforms Kubernetes deployment from ad-hoc YAML management into a structured, repeatable process:</p>
+<ul>
+<li><strong>Charts</strong> are templated, versioned packages for your applications.</li>
+<li><strong>Values</strong> separate configuration from structure, enabling multi-environment deployments.</li>
+<li><strong>Releases</strong> track every deployment with built-in rollback.</li>
+<li><strong>OCI registries</strong> serve as your chart distribution mechanism.</li>
+</ul>
+
+<p>Start by converting one of your existing YAML deployments into a Helm chart. Replace hardcoded values with template expressions, create per-environment value files, and use <code>helm upgrade</code> for deployments. Once you experience rollback with <code>helm history</code> and <code>helm rollback</code>, you'll never go back to managing raw YAML.</p>
+
+</article>
+<footer><p>© 2026 DevOpsDaily · <a href="../index.html">Home</a></p></footer>
+</div>
+<script data-goatcounter="https://devopsdailyblog.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+</body>
+</html>
