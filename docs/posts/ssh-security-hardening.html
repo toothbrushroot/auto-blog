@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A practical guide to SSH security hardening — key-based authentication, disabling password login, fail2ban, port knocking, jump hosts, and audit logging for production servers.">
+<title>SSH Security Hardening: Lock Down Your Servers in 15 Minutes - DevOpsDaily</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.8;font-size:1.05rem}
+.container{max-width:750px;margin:0 auto;padding:2rem 1rem}
+nav{margin-bottom:1rem}
+nav a{color:#58a6ff;text-decoration:none;font-size:.9rem}
+h1{font-size:2rem;color:#f0f6fc;margin:.5rem 0 1.5rem;line-height:1.3}
+.date{color:#8b949e;font-size:.9rem;margin-bottom:2rem}
+article h2{color:#f0f6fc;font-size:1.4rem;margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid #21262d}
+article h3{color:#f0f6fc;font-size:1.15rem;margin:1.5rem 0 .5rem}
+article p{margin-bottom:1rem;color:#b1bac4}
+article code{background:#21262d;padding:.15rem .4rem;border-radius:3px;font-size:.9rem;color:#ffa657}
+article pre{background:#161b22;border:1px solid #21262d;border-radius:6px;padding:1rem;overflow-x:auto;margin-bottom:1.5rem;font-size:.9rem}
+article pre code{background:none;padding:0;color:#c9d1d9}
+article a{color:#58a6ff}
+article ul,article ol{margin:0 0 1rem 1.5rem;color:#b1bac4}
+article li{margin-bottom:.3rem}
+article blockquote{border-left:3px solid #30363d;padding-left:1rem;color:#8b949e;margin-bottom:1rem;font-style:italic}
+footer{text-align:center;padding:2rem;color:#484f58;font-size:.85rem;border-top:1px solid #21262d;margin-top:3rem}
+footer a{color:#484f58}
+</style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "SSH Security Hardening: Lock Down Your Servers in 15 Minutes",
+  "description": "A practical guide to SSH security hardening — key-based authentication, disabling password login, fail2ban, port knocking, jump hosts, and audit logging for production servers.",
+  "datePublished": "2026-08-08",
+  "dateModified": "2026-08-08",
+  "author": {"@type": "Organization", "name": "DevOpsDaily"},
+  "publisher": {"@type": "Organization", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"},
+  "url": "https://toothbrushroot.github.io/auto-blog/posts/ssh-security-hardening.html",
+  "isPartOf": {"@type": "Blog", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"}
+}
+</script>
+<meta property="og:title" content="SSH Security Hardening: Lock Down Your Servers in 15 Minutes">
+<meta property="og:description" content="A practical guide to SSH security hardening — key-based authentication, disabling password login, fail2ban, port knocking, jump hosts, and audit logging for production servers.">
+<meta property="og:url" content="https://toothbrushroot.github.io/auto-blog/posts/ssh-security-hardening.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="DevOpsDaily">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="SSH Security Hardening: Lock Down Your Servers in 15 Minutes">
+<meta name="twitter:description" content="A practical guide to SSH security hardening — key-based authentication, disabling password login, fail2ban, port knocking, jump hosts, and audit logging for production servers.">
+<link rel="canonical" href="https://toothbrushroot.github.io/auto-blog/posts/ssh-security-hardening.html">
+</head>
+<body>
+<div class="container">
+<nav><a href="../index.html">← Back to DevOpsDaily</a></nav>
+<h1>SSH Security Hardening: Lock Down Your Servers in 15 Minutes</h1>
+<div class="date">August 8, 2026 · 7 min read</div>
+<article>
+
+<p>SSH is the front door to every server you manage. If it's misconfigured, you're one leaked password or brute-force script away from a breach. The default OpenSSH install on most Linux distributions is functional but not secure — it allows password authentication, listens on a well-known port, and has no rate limiting. That's fine for a throwaway test box. For production, you need to harden it.</p>
+
+<p>This guide covers the changes that actually matter: key-based authentication, disabling password login, fail2ban for brute-force protection, non-standard ports, and jump host architecture. Every config snippet is tested on Ubuntu 24.04 and works on any modern Linux distribution.</p>
+
+<h2>1. Generate a Strong SSH Key Pair</h2>
+
+<p>If you're still using RSA keys, it's time to upgrade. Ed25519 keys are shorter, faster, and considered more secure against future quantum attacks:</p>
+
+<pre><code># Generate Ed25519 key (recommended)
+ssh-keygen -t ed25519 -C "your@email.com" -f ~/.ssh/id_ed25519
+
+# If you need RSA for compatibility (older systems)
+ssh-keygen -t rsa -b 4096 -C "your@email.com" -f ~/.ssh/id_rsa</code></pre>
+
+<p><strong>Always set a passphrase.</strong> A stolen key file without a passphrase gives an attacker instant access. With a passphrase, they need both the file and the passphrase — two-factor for SSH without buying hardware tokens.</p>
+
+<p>Copy your public key to the server:</p>
+
+<pre><code># Modern way (ships with OpenSSH 8.2+)
+ssh-copy-id -i ~/.ssh/id_ed25519.pub user@server
+
+# Manual way
+cat ~/.ssh/id_ed25519.pub | ssh user@server "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys"</code></pre>
+
+<h2>2. Harden sshd_config</h2>
+
+<p>Edit <code>/etc/ssh/sshd_config</code> — these are the changes that move the needle:</p>
+
+<pre><code># Disable password authentication (key-only)
+PasswordAuthentication no
+ChallengeResponseAuthentication no
+KbdInteractiveAuthentication no
+
+# Disable root login
+PermitRootLogin no
+
+# Disable empty passwords
+PermitEmptyPasswords no
+
+# Limit authentication attempts per connection
+MaxAuthTries 3
+
+# Idle timeout: disconnect after 5 minutes of inactivity
+ClientAliveInterval 300
+ClientAliveCountMax 2
+
+# Restrict to protocol 2
+Protocol 2
+
+# Disable X11 forwarding (unless you need it)
+X11Forwarding no
+
+# Disable TCP forwarding by default (allow per-user)
+AllowTcpForwarding no
+
+# Use only strong ciphers and MACs
+Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com
+MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
+KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org</code></pre>
+
+<p><strong>Critical:</strong> Before disabling password authentication, make sure your key-based login works. Test it in a separate terminal session — don't lock yourself out. Keep one session open with the old settings while you verify.</p>
+
+<pre><code># Test config syntax before restarting
+sudo sshd -t
+
+# Restart SSH (keeps current sessions alive)
+sudo systemctl restart sshd</code></pre>
+
+<h2>3. Fail2ban: Stop Brute-Force Attacks</h2>
+
+<p>Even with password auth disabled, bots will hammer your SSH port. Fail2ban monitors auth logs and bans IPs after repeated failures:</p>
+
+<pre><code># Install
+sudo apt install fail2ban -y
+
+# Create local config (never edit jail.conf directly)
+sudo cp /etc/fail2ban/jail.conf /etc/fail2ban/jail.local</code></pre>
+
+<p>Edit <code>/etc/fail2ban/jail.local</code>, find the <code>[sshd]</code> section:</p>
+
+<pre><code>[sshd]
+enabled = true
+port = ssh
+filter = sshd
+logpath = /var/log/auth.log
+maxretry = 3
+bantime = 3600
+findtime = 600
+ignoreip = 127.0.0.1/8 YOUR_STATIC_IP</code></pre>
+
+<p>This bans an IP for 1 hour after 3 failures within 10 minutes. Add your own static IP to <code>ignoreip</code> so you don't accidentally lock yourself out. Start fail2ban:</p>
+
+<pre><code>sudo systemctl enable fail2ban
+sudo systemctl start fail2ban
+
+# Check banned IPs
+sudo fail2ban-client status sshd</code></pre>
+
+<h2>4. Change the Default Port</h2>
+
+<p>Moving SSH from port 22 to a non-standard port won't stop a targeted attacker, but it eliminates 99% of automated scanners. Most bots only scan port 22:</p>
+
+<pre><code># In /etc/ssh/sshd_config
+Port 2222</code></pre>
+
+<p>Update your firewall and SSH client config:</p>
+
+<pre><code># ~/.ssh/config — so you don't have to type -p every time
+Host production-server
+    HostName 203.0.113.50
+    User deploy
+    Port 2222
+    IdentityFile ~/.ssh/id_ed25519</code></pre>
+
+<p><strong>Warning:</strong> If you're behind a corporate firewall that only allows outbound port 22, changing the port will break your access. Test first.</p>
+
+<h2>5. Jump Host Architecture</h2>
+
+<p>For production environments with multiple servers, don't expose SSH on every machine. Use a <strong>bastion host</strong> (jump host) as the single entry point:</p>
+
+<pre><code># ~/.ssh/config
+Host bastion
+    HostName bastion.example.com
+    User admin
+    Port 2222
+    IdentityFile ~/.ssh/id_ed25519
+
+Host internal-*
+    User deploy
+    IdentityFile ~/.ssh/id_ed25519
+    ProxyJump bastion
+
+Host internal-db
+    HostName 10.0.1.50
+
+Host internal-app
+    HostName 10.0.1.51</code></pre>
+
+<p>Now <code>ssh internal-db</code> automatically tunnels through the bastion. Internal servers only accept connections from the bastion's IP:</p>
+
+<pre><code># On internal servers' sshd_config
+AllowUsers deploy@10.0.1.1</code></pre>
+
+<p>This means an attacker needs to compromise the bastion <em>and</em> the internal key to reach your database. That's two layers instead of one.</p>
+
+<h2>6. SSH Audit Logging</h2>
+
+<p>Know who's connecting and what they're doing. Add these to your <code>sshd_config</code>:</p>
+
+<pre><code># Log at VERBOSE level for key fingerprints
+LogLevel VERBOSE</code></pre>
+
+<p>Then check the logs:</p>
+
+<pre><code># Who logged in recently
+grep "Accepted publickey" /var/log/auth.log | tail -20
+
+# Failed attempts (should be near zero after hardening)
+grep "Failed" /var/log/auth.log | tail -20
+
+# Key fingerprints used
+grep "Accepted publickey" /var/log/auth.log | grep -oP 'SHA256:\S+'</code></pre>
+
+<p>For production, ship these logs to your centralized logging stack (ELK, Loki, etc.). A sudden spike in failed SSH attempts is an early warning sign of a targeted attack.</p>
+
+<h2>7. Two-Factor Authentication (Optional)</h2>
+
+<p>For high-security environments, add TOTP-based 2FA on top of SSH keys:</p>
+
+<pre><code># Install Google Authenticator PAM module
+sudo apt install libpam-google-authenticator -y
+
+# Set up for your user
+google-authenticator
+
+# In /etc/pam.d/sshd (add at the end)
+auth required pam_google_authenticator.so
+
+# In /etc/ssh/sshd_config
+ChallengeResponseAuthentication yes
+AuthenticationMethods publickey,keyboard-interactive</code></pre>
+
+<p>This requires both the SSH key <strong>and</strong> a TOTP code. Even a stolen key file without the TOTP seed is useless. The downside: you can't use <code>ssh</code> in scripts without interaction. Reserve this for human operators, not CI/CD pipelines.</p>
+
+<h2>Quick Hardening Checklist</h2>
+
+<ul>
+<li>✅ Ed25519 keys with passphrases</li>
+<li>✅ Password authentication disabled</li>
+<li>✅ Root login disabled</li>
+<li>✅ fail2ban installed and configured</li>
+<li>✅ Non-standard port (or at least rate-limited port 22)</li>
+<li>✅ Jump host for multi-server environments</li>
+<li>✅ Log level set to VERBOSE</li>
+<li>✅ Strong ciphers and MACs only</li>
+<li>✅ Idle timeout configured</li>
+<li>✅ Auth logs shipped to centralized monitoring</li>
+</ul>
+
+<p>SSH hardening isn't glamorous, but it's the foundation of server security. These changes take 15 minutes and eliminate the most common attack vectors. Do them once, document the config in your infrastructure-as-code repo, and you'll never have to think about SSH security again — until you add a new server and copy the same hardened config over.</p>
+
+</article>
+<footer><p>© 2026 DevOpsDaily · <a href="../index.html">Home</a></p></footer>
+</div>
+<script data-goatcounter="https://devopsdailyblog.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+</body>
+</html>
