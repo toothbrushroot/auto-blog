@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A practical systemd deep dive: unit files, systemctl workflows, timers that replace cron, journalctl log queries, and sandboxing directives that harden your services.">
+<title>systemd Deep Dive: Services, Timers, and Logs Like a Pro - DevOpsDaily</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.8;font-size:1.05rem}
+.container{max-width:750px;margin:0 auto;padding:2rem 1rem}
+nav{margin-bottom:1rem}
+nav a{color:#58a6ff;text-decoration:none;font-size:.9rem}
+h1{font-size:2rem;color:#f0f6fc;margin:.5rem 0 1.5rem;line-height:1.3}
+.date{color:#8b949e;font-size:.9rem;margin-bottom:2rem}
+article h2{color:#f0f6fc;font-size:1.4rem;margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid #21262d}
+article h3{color:#f0f6fc;font-size:1.15rem;margin:1.5rem 0 .5rem}
+article p{margin-bottom:1rem;color:#b1bac4}
+article code{background:#21262d;padding:.15rem .4rem;border-radius:3px;font-size:.9rem;color:#ffa657}
+article pre{background:#161b22;border:1px solid #21262d;border-radius:6px;padding:1rem;overflow-x:auto;margin-bottom:1.5rem;font-size:.9rem}
+article pre code{background:none;padding:0;color:#c9d1d9}
+article a{color:#58a6ff}
+article ul,article ol{margin:0 0 1rem 1.5rem;color:#b1bac4}
+article li{margin-bottom:.3rem}
+article blockquote{border-left:3px solid #30363d;padding-left:1rem;color:#8b949e;margin-bottom:1rem;font-style:italic}
+footer{text-align:center;padding:2rem;color:#484f58;font-size:.85rem;border-top:1px solid #21262d;margin-top:3rem}
+footer a{color:#484f58}
+</style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "systemd Deep Dive: Services, Timers, and Logs Like a Pro",
+  "description": "A practical systemd deep dive: unit files, systemctl workflows, timers that replace cron, journalctl log queries, and sandboxing directives that harden your services.",
+  "datePublished": "2026-08-09",
+  "dateModified": "2026-08-09",
+  "author": {"@type": "Organization", "name": "DevOpsDaily"},
+  "publisher": {"@type": "Organization", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"},
+  "url": "https://toothbrushroot.github.io/auto-blog/posts/systemd-deep-dive.html",
+  "isPartOf": {"@type": "Blog", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"}
+}
+</script>
+<meta property="og:title" content="systemd Deep Dive: Services, Timers, and Logs Like a Pro">
+<meta property="og:description" content="A practical systemd deep dive: unit files, systemctl workflows, timers that replace cron, journalctl log queries, and sandboxing directives that harden your services.">
+<meta property="og:url" content="https://toothbrushroot.github.io/auto-blog/posts/systemd-deep-dive.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="DevOpsDaily">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="systemd Deep Dive: Services, Timers, and Logs Like a Pro">
+<meta name="twitter:description" content="A practical systemd deep dive: unit files, systemctl workflows, timers that replace cron, journalctl log queries, and sandboxing directives that harden your services.">
+<link rel="canonical" href="https://toothbrushroot.github.io/auto-blog/posts/systemd-deep-dive.html">
+</head>
+<body>
+<div class="container">
+<nav><a href="../index.html">← Back to DevOpsDaily</a></nav>
+<h1>systemd Deep Dive: Services, Timers, and Logs Like a Pro</h1>
+<div class="date">August 9, 2026 · 8 min read</div>
+<article>
+
+<p>You SSH into a server and run <code>systemctl status nginx</code>. It works — but do you know what's actually happening under the hood? systemd is the init system on virtually every modern Linux distribution (Ubuntu, Debian, RHEL, Fedora, Arch, openSUSE). It's the first process (PID 1) and it decides when everything else starts, stops, and restarts. Yet most DevOps engineers only ever use four commands: <code>start</code>, <code>stop</code>, <code>restart</code>, and <code>enable</code>.</p>
+
+<p>This guide goes past those four commands: writing robust unit files, replacing cron with timers, querying the journal like a pro, and using systemd's built-in sandboxing to harden every service you run.</p>
+
+<h2>1. Anatomy of a Unit File</h2>
+
+<p>Every service on a systemd machine is described by a <strong>unit file</strong>. Here's a production-grade example for a Node.js API:</p>
+
+<pre><code># /etc/systemd/system/my-api.service
+[Unit]
+Description=My API service
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=deploy
+WorkingDirectory=/opt/my-api
+ExecStart=/usr/bin/node /opt/my-api/server.js
+Restart=on-failure
+RestartSec=3
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/my-api/env
+
+[Install]
+WantedBy=multi-user.target</code></pre>
+
+<p>The three sections matter:</p>
+<ul>
+<li><strong><code>[Unit]</code></strong> — metadata and ordering. <code>After=</code> says "start after this target/service"; <code>Requires=</code> says "if this fails, stop me too"; <code>Wants=</code> is weaker — "try to start it, but don't fail if it can't".</li>
+<li><strong><code>[Service]</code></strong> — how to run and supervise the process. <code>Type=simple</code> means the process itself is the main process. <code>Restart=on-failure</code> is the bare minimum for any service that should self-heal.</li>
+<li><strong><code>[Install]</code></strong> — how the unit gets enabled. <code>WantedBy=multi-user.target</code> is the standard "start at boot" hook.</li>
+</ul>
+
+<p>After editing a unit file, always reload before restarting:</p>
+
+<pre><code>systemctl daemon-reload
+systemctl restart my-api</code></pre>
+
+<blockquote>Forgetting <code>daemon-reload</code> is the most common systemd mistake. systemd caches unit files — your edit silently does nothing until you reload.</blockquote>
+
+<h2>2. systemctl Commands You Actually Need</h2>
+
+<p>Beyond the basics, these are the commands that save you during an incident:</p>
+
+<table style="width:100%;border-collapse:collapse;margin-bottom:1.5rem;color:#b1bac4">
+<tr style="border-bottom:1px solid #21262d"><th style="text-align:left;padding:.5rem;color:#f0f6fc">Command</th><th style="text-align:left;padding:.5rem;color:#f0f6fc">What it does</th></tr>
+<tr style="border-bottom:1px solid #21262d"><td style="padding:.5rem"><code>systemctl status my-api</code></td><td style="padding:.5rem">State, recent log lines, and the PID — first stop when something breaks.</td></tr>
+<tr style="border-bottom:1px solid #21262d"><td style="padding:.5rem"><code>systemctl list-units --failed</code></td><td style="padding:.5rem">Every failed unit. Run this first on any unknown server.</td></tr>
+<tr style="border-bottom:1px solid #21262d"><td style="padding:.5rem"><code>systemctl list-dependencies --reverse my-api</code></td><td style="padding:.5rem">What depends on this unit — finds broken chains after an upgrade.</td></tr>
+<tr style="border-bottom:1px solid #21262d"><td style="padding:.5rem"><code>systemctl show my-api -p Restart</code></td><td style="padding:.5rem">Inspect the effective (post-override) value of any property.</td></tr>
+<tr style="border-bottom:1px solid #21262d"><td style="padding:.5rem"><code>systemctl mask docker.service</code></td><td style="padding:.5rem">Hard-disable a unit — stronger than disable; even manual starts fail.</td></tr>
+</table>
+
+<h2>3. Timers: The Modern cron</h2>
+
+<p>systemd timers are cron with three huge advantages: missed-run catching, precise scheduling, and full logging. A backup timer looks like this:</p>
+
+<pre><code># /etc/systemd/system/backup.service
+[Unit]
+Description=Nightly database backup
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/backup-db.sh
+# If a run takes 20 minutes, don't let the next one start on top of it
+ExecStart=/usr/bin/touch /var/log/backup-ran.marker
+
+# /etc/systemd/system/backup.timer
+[Unit]
+Description=Run backup nightly at 02:30
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target</code></pre>
+
+<p>Then <code>systemctl enable --now backup.timer</code>. Key directives:</p>
+<ul>
+<li><strong><code>Persistent=true</code></strong> — if the machine was off at 02:30, the timer fires immediately on next boot. cron loses that job entirely.</li>
+<li><strong><code>RandomizedDelaySec=300</code></strong> — spreads load so 50 servers don't all hammer the backup target at exactly 02:30.</li>
+<li><strong><code>OnCalendar</code></strong> — accepts cron-style <code>Mon..Fri *-*-* 09:00:00</code> plus natural syntax like <code>hourly</code>, <code>daily</code>, <code>weekly</code>.</li>
+</ul>
+
+<p>Check timers with <code>systemctl list-timers</code> — it shows the last run and the next fire time, so you can verify a scheduled job actually ran.</p>
+
+<h2>4. journalctl: Querying the Journal</h2>
+
+<p>Since journald captures stdout/stderr of every service, you get centralized logs without configuring anything. The queries that matter:</p>
+
+<pre><code># Last 100 lines, follow like tail -f
+journalctl -u my-api -n 100 -f
+
+# Everything from the last hour
+journalctl -u my-api --since "1 hour ago"
+
+# Errors only, across all services
+journalctl -p err -b
+
+# A specific PID (follow a process across restarts)
+journalctl _PID=12345
+
+# Show how much disk the journal uses
+journalctl --disk-usage
+
+# Trim old journals to 200 MB
+journalctl --vacuum-size=200M</code></pre>
+
+<p>To make logs survive reboots, set <code>Storage=persistent</code> in <code>/etc/systemd/journald.conf</code> (the default on most distros, but verify on minimal images). For long-term retention, ship the journal to Loki or Elasticsearch instead of growing local disk — the <code>systemd-journal-remote</code> service can also forward logs to a central collector over the network.</p>
+
+<h2>5. Sandboxing: Hardening Services for Free</h2>
+
+<p>This is the underrated gem. systemd can restrict what a service can do with a few lines in the <code>[Service]</code> section — no seccomp tooling, no container runtime required:</p>
+
+<pre><code>[Service]
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/etc /usr
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=</code></pre>
+
+<table style="width:100%;border-collapse:collapse;margin-bottom:1.5rem;color:#b1bac4">
+<tr style="border-bottom:1px solid #21262d"><th style="text-align:left;padding:.5rem;color:#f0f6fc">Directive</th><th style="text-align:left;padding:.5rem;color:#f0f6fc">Protection</th></tr>
+<tr style="border-bottom:1px solid #21262d"><td style="padding:.5rem"><code>NoNewPrivileges=true</code></td><td style="padding:.5rem">Blocks setuid binaries (sudo, su) from escalating — kills most privilege-escalation chains.</td></tr>
+<tr style="border-bottom:1px solid #21262d"><td style="padding:.5rem"><code>ProtectSystem=strict</code></td><td style="padding:.5rem">Whole filesystem read-only except explicitly writable paths.</td></tr>
+<tr style="border-bottom:1px solid #21262d"><td style="padding:.5rem"><code>PrivateTmp=true</code></td><td style="padding:.5rem">Isolated /tmp per service — no /tmp symlink attacks.</td></tr>
+<tr style="border-bottom:1px solid #21262d"><td style="padding:.5rem"><code>MemoryDenyWriteExecute=true</code></td><td style="padding:.5rem">Blocks W^X memory — stops JIT-based and shellcode exploits.</td></tr>
+<tr style="border-bottom:1px solid #21262d"><td style="padding:.5rem"><code>CapabilityBoundingSet=</code></td><td style="padding:.5rem">Drops every Linux capability the service doesn't need.</td></tr>
+</table>
+
+<p>Test your sandbox with <code>systemd-analyze security my-api</code>. It prints a vulnerability score (0 = excellent, 10 = terrible) with a per-directive breakdown. Run it on every service you deploy — it's the cheapest security audit you'll ever do.</p>
+
+<h2>6. Debugging Boot and Service Failures</h2>
+
+<p>When a service won't start, work through these in order:</p>
+
+<pre><code># 1. Why did it fail?
+systemctl status my-api --no-pager
+
+# 2. What did it print before dying?
+journalctl -u my-api -n 50 --no-pager
+
+# 3. Is the unit file even valid?
+systemd-analyze verify /etc/systemd/system/my-api.service
+
+# 4. Which dependencies are dragging the boot down?
+systemd-analyze blame
+
+# 5. Watch the whole boot sequence graphically
+systemd-analyze plot > boot.svg</code></pre>
+
+<p>Two failures worth recognizing on sight: <code>Unit my-api.service not found</code> means you enabled a unit that doesn't exist (usually after <code>daemon-reload</code> was skipped), and <code>Failed with result 'exit-code'</code> means the process itself crashed — read the journal, not the status line.</p>
+
+<h2>Summary</h2>
+
+<p>systemd isn't just "the thing that starts services". It's a complete supervision, scheduling, logging, and sandboxing platform:</p>
+<ul>
+<li><strong>Unit files</strong> — declare dependencies with <code>After=</code>/<code>Requires=</code>/<code>Wants=</code>, and always run <code>daemon-reload</code> after editing.</li>
+<li><strong>Timers</strong> — replace cron with <code>Persistent=true</code> timers so missed runs don't silently vanish.</li>
+<li><strong>journalctl</strong> — <code>-u</code>, <code>-p</code>, and <code>--since</code> give you per-service log queries with zero setup.</li>
+<li><strong>Sandboxing</strong> — 5-10 directives harden a service against the most common exploit classes, and <code>systemd-analyze security</code> audits it for you.</li>
+</ul>
+
+<p>Master these four areas and you'll stop fighting your init system — and start using it as a force multiplier for reliability and security.</p>
+
+</article>
+<footer><p>© 2026 DevOpsDaily · <a href="../index.html">Home</a></p></footer>
+</div>
+<script data-goatcounter="https://devopsdailyblog.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+</body>
+</html>
