@@ -2,145 +2,151 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 <url>
   <loc>https://toothbrushroot.github.io/auto-blog/</loc>
-  <lastmod>2026-08-09</lastmod>
+  <lastmod>2026-08-10</lastmod>
   <changefreq>daily</changefreq>
   <priority>1.0</priority>
 </url>
 <url>
   <loc>https://toothbrushroot.github.io/auto-blog/posts/10-python-libraries.html</loc>
-  <lastmod>2026-08-09</lastmod>
+  <lastmod>2026-08-10</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.7</priority>
 </url>
 <url>
   <loc>https://toothbrushroot.github.io/auto-blog/posts/ai-coding-tools-2026.html</loc>
-  <lastmod>2026-08-09</lastmod>
+  <lastmod>2026-08-10</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.7</priority>
 </url>
 <url>
   <loc>https://toothbrushroot.github.io/auto-blog/posts/ansible-automation-beginners.html</loc>
-  <lastmod>2026-08-09</lastmod>
+  <lastmod>2026-08-10</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.7</priority>
 </url>
 <url>
   <loc>https://toothbrushroot.github.io/auto-blog/posts/building-invoiceflow-quickbooks-automation.html</loc>
-  <lastmod>2026-08-09</lastmod>
+  <lastmod>2026-08-10</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.7</priority>
 </url>
 <url>
   <loc>https://toothbrushroot.github.io/auto-blog/posts/centralized-logging-elk-loki.html</loc>
-  <lastmod>2026-08-09</lastmod>
+  <lastmod>2026-08-10</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.7</priority>
 </url>
 <url>
   <loc>https://toothbrushroot.github.io/auto-blog/posts/container-security-practical-guide.html</loc>
-  <lastmod>2026-08-09</lastmod>
+  <lastmod>2026-08-10</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.7</priority>
 </url>
 <url>
   <loc>https://toothbrushroot.github.io/auto-blog/posts/docker-commands-2026.html</loc>
-  <lastmod>2026-08-09</lastmod>
+  <lastmod>2026-08-10</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.7</priority>
 </url>
 <url>
   <loc>https://toothbrushroot.github.io/auto-blog/posts/docker-compose-multi-container.html</loc>
-  <lastmod>2026-08-09</lastmod>
+  <lastmod>2026-08-10</lastmod>
+  <changefreq>monthly</changefreq>
+  <priority>0.7</priority>
+</url>
+<url>
+  <loc>https://toothbrushroot.github.io/auto-blog/posts/docker-multi-stage-builds.html</loc>
+  <lastmod>2026-08-10</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.7</priority>
 </url>
 <url>
   <loc>https://toothbrushroot.github.io/auto-blog/posts/git-tricks.html</loc>
-  <lastmod>2026-08-09</lastmod>
+  <lastmod>2026-08-10</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.7</priority>
 </url>
 <url>
   <loc>https://toothbrushroot.github.io/auto-blog/posts/git-worktrees-parallel-development.html</loc>
-  <lastmod>2026-08-09</lastmod>
+  <lastmod>2026-08-10</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.7</priority>
 </url>
 <url>
   <loc>https://toothbrushroot.github.io/auto-blog/posts/github-actions-ci-cd-pipeline.html</loc>
-  <lastmod>2026-08-09</lastmod>
+  <lastmod>2026-08-10</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.7</priority>
 </url>
 <url>
   <loc>https://toothbrushroot.github.io/auto-blog/posts/helm-charts-kubernetes-guide.html</loc>
-  <lastmod>2026-08-09</lastmod>
+  <lastmod>2026-08-10</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.7</priority>
 </url>
 <url>
   <loc>https://toothbrushroot.github.io/auto-blog/posts/kubernetes-health-probes.html</loc>
-  <lastmod>2026-08-09</lastmod>
+  <lastmod>2026-08-10</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.7</priority>
 </url>
 <url>
   <loc>https://toothbrushroot.github.io/auto-blog/posts/kubernetes-networking-service-ingress.html</loc>
-  <lastmod>2026-08-09</lastmod>
+  <lastmod>2026-08-10</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.7</priority>
 </url>
 <url>
   <loc>https://toothbrushroot.github.io/auto-blog/posts/linux-performance-troubleshooting.html</loc>
-  <lastmod>2026-08-09</lastmod>
+  <lastmod>2026-08-10</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.7</priority>
 </url>
 <url>
   <loc>https://toothbrushroot.github.io/auto-blog/posts/modern-cli-tools-2026.html</loc>
-  <lastmod>2026-08-09</lastmod>
+  <lastmod>2026-08-10</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.7</priority>
 </url>
 <url>
   <loc>https://toothbrushroot.github.io/auto-blog/posts/nginx-reverse-proxy.html</loc>
-  <lastmod>2026-08-09</lastmod>
+  <lastmod>2026-08-10</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.7</priority>
 </url>
 <url>
   <loc>https://toothbrushroot.github.io/auto-blog/posts/prometheus-grafana-monitoring.html</loc>
-  <lastmod>2026-08-09</lastmod>
+  <lastmod>2026-08-10</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.7</priority>
 </url>
 <url>
   <loc>https://toothbrushroot.github.io/auto-blog/posts/rest-api-design-best-practices.html</loc>
-  <lastmod>2026-08-09</lastmod>
+  <lastmod>2026-08-10</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.7</priority>
 </url>
 <url>
   <loc>https://toothbrushroot.github.io/auto-blog/posts/ssh-security-hardening.html</loc>
-  <lastmod>2026-08-09</lastmod>
+  <lastmod>2026-08-10</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.7</priority>
 </url>
 <url>
   <loc>https://toothbrushroot.github.io/auto-blog/posts/systemd-deep-dive.html</loc>
-  <lastmod>2026-08-09</lastmod>
+  <lastmod>2026-08-10</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.7</priority>
 </url>
 <url>
   <loc>https://toothbrushroot.github.io/auto-blog/posts/terraform-from-zero.html</loc>
-  <lastmod>2026-08-09</lastmod>
+  <lastmod>2026-08-10</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.7</priority>
 </url>
 <url>
   <loc>https://toothbrushroot.github.io/auto-blog/posts/vscode-extensions-2026.html</loc>
-  <lastmod>2026-08-09</lastmod>
+  <lastmod>2026-08-10</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.7</priority>
 </url>

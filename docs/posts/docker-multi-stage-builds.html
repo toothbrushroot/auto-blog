@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A practical guide to Docker multi-stage builds — shrinking images from gigabytes to megabytes with build stages, build args, distroless base images, and caching strategies that speed up your CI pipeline.">
+<title>Docker Multi-Stage Builds: Slim Images, Faster Deploys, Fewer Vulnerabilities - DevOpsDaily</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.8;font-size:1.05rem}
+.container{max-width:750px;margin:0 auto;padding:2rem 1rem}
+nav{margin-bottom:1rem}
+nav a{color:#58a6ff;text-decoration:none;font-size:.9rem}
+h1{font-size:2rem;color:#f0f6fc;margin:.5rem 0 1.5rem;line-height:1.3}
+.date{color:#8b949e;font-size:.9rem;margin-bottom:2rem}
+article h2{color:#f0f6fc;font-size:1.4rem;margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid #21262d}
+article h3{color:#f0f6fc;font-size:1.15rem;margin:1.5rem 0 .5rem}
+article p{margin-bottom:1rem;color:#b1bac4}
+article code{background:#21262d;padding:.15rem .4rem;border-radius:3px;font-size:.9rem;color:#ffa657}
+article pre{background:#161b22;border:1px solid #21262d;border-radius:6px;padding:1rem;overflow-x:auto;margin-bottom:1.5rem;font-size:.9rem}
+article pre code{background:none;padding:0;color:#c9d1d9}
+article a{color:#58a6ff}
+article ul,article ol{margin:0 0 1rem 1.5rem;color:#b1bac4}
+article li{margin-bottom:.3rem}
+article blockquote{border-left:3px solid #30363d;padding-left:1rem;color:#8b949e;margin-bottom:1rem;font-style:italic}
+footer{text-align:center;padding:2rem;color:#484f58;font-size:.85rem;border-top:1px solid #21262d;margin-top:3rem}
+footer a{color:#484f58}
+</style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Docker Multi-Stage Builds: Slim Images, Faster Deploys, Fewer Vulnerabilities",
+  "description": "A practical guide to Docker multi-stage builds — shrinking images from gigabytes to megabytes with build stages, build args, distroless base images, and caching strategies that speed up your CI pipeline.",
+  "datePublished": "2026-08-10",
+  "dateModified": "2026-08-10",
+  "author": {"@type": "Organization", "name": "DevOpsDaily"},
+  "publisher": {"@type": "Organization", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"},
+  "url": "https://toothbrushroot.github.io/auto-blog/posts/docker-multi-stage-builds.html",
+  "isPartOf": {"@type": "Blog", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"}
+}
+</script>
+<meta property="og:title" content="Docker Multi-Stage Builds: Slim Images, Faster Deploys, Fewer Vulnerabilities">
+<meta property="og:description" content="A practical guide to Docker multi-stage builds — shrinking images from gigabytes to megabytes with build stages, build args, distroless base images, and caching strategies that speed up your CI pipeline.">
+<meta property="og:url" content="https://toothbrushroot.github.io/auto-blog/posts/docker-multi-stage-builds.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="DevOpsDaily">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Docker Multi-Stage Builds: Slim Images, Faster Deploys, Fewer Vulnerabilities">
+<meta name="twitter:description" content="A practical guide to Docker multi-stage builds — shrinking images from gigabytes to megabytes with build stages, build args, distroless base images, and caching strategies that speed up your CI pipeline.">
+<link rel="canonical" href="https://toothbrushroot.github.io/auto-blog/posts/docker-multi-stage-builds.html">
+</head>
+<body>
+<div class="container">
+<nav><a href="../index.html">← Back to DevOpsDaily</a></nav>
+<h1>Docker Multi-Stage Builds: Slim Images, Faster Deploys, Fewer Vulnerabilities</h1>
+<div class="date">August 10, 2026 · 8 min read</div>
+<article>
+
+<p>Your Go binary is 15 MB. Your Python app needs three pip packages. Yet somehow your Docker image is 1.2 GB and your CI pipeline takes 11 minutes. If this sounds familiar, you're shipping your <strong>build toolchain in your production image</strong> — compilers, package managers, headers, and caches that your runtime never uses.</p>
+
+<p>Multi-stage builds fix this by letting one Dockerfile describe several <em>stages</em>, each with its own base image. Only the final stage ends up in your registry. Everything else — the 2 GB node_modules, the Go toolchain, the pip wheel cache — exists only during the build and then disappears.</p>
+
+<h2>1. The Problem: One Image to Build and Run</h2>
+
+<p>A naive Dockerfile for a Go service looks like this:</p>
+
+<pre><code>FROM golang:1.22
+WORKDIR /app
+COPY . .
+RUN go build -o server .
+CMD ["./server"]</code></pre>
+
+<p>It works. It also ships the entire Go toolchain — compilers, standard library sources, git — in every production image. The image is 850 MB, contains hundreds of CVEs you don't need, and takes forever to pull on a cold node. The same pattern hits every language: <code>FROM python:3.12</code> includes pip, setuptools, and a compiler toolchain you might not need; <code>FROM node:20</code> ships npm and build headers.</p>
+
+<h2>2. The Fix: Multi-Stage Builds</h2>
+
+<p>The <code>FROM</code> instruction can appear multiple times. Each one starts a new stage. Only the <strong>last stage</strong> determines the final image. You copy artifacts from earlier stages with <code>COPY --from</code>:</p>
+
+<pre><code># Stage 1: build the binary with the full toolchain
+FROM golang:1.22 AS builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server .
+
+# Stage 2: runtime — only the binary
+FROM alpine:3.20
+RUN adduser -D appuser
+COPY --from=builder /out/server /usr/local/bin/server
+USER appuser
+EXPOSE 8080
+CMD ["server"]</code></pre>
+
+<p>That 850 MB image becomes roughly 15 MB. The binary was built once in stage 1 with full tooling, then copied alone into a minimal Alpine runtime. <code>CGO_ENABLED=0</code> produces a static binary with no libc dependency — the classic trick that makes the final image work on any Linux base.</p>
+
+<blockquote>The rule: build in a fat image, run in a thin one. The build stage is throwaway; only the runtime stage ships.</blockquote>
+
+<h2>3. Cutting Even Further: Distroless and Scratch</h2>
+
+<p>Alpine is small, but it still carries a package manager and shell — attack surface you don't need for a static binary. Google's <a href="https://github.com/GoogleContainerTools/distroless">distroless</a> images contain only the runtime dependencies: no shell, no package manager, no <code>wget</code>. For a fully static Go binary, you can even go down to <code>scratch</code>:</p>
+
+<pre><code>FROM scratch
+COPY --from=builder /out/server /server
+USER 10001
+EXPOSE 8080
+ENTRYPOINT ["/server"]</code></pre>
+
+<p>That's a 10 MB image with exactly two files: the binary and a passwd entry for user 10001. Nothing to exploit, nothing to patch. The trade-off: no shell means <code>docker exec</code> debugging is limited — you diagnose via logs and metrics instead. For stateful troubleshooting, distroless with a debug variant is a pragmatic middle ground.</p>
+
+<p>For interpreted languages, multi-stage still pays off — you just copy dependencies instead of binaries:</p>
+
+<pre><code>FROM python:3.12-slim AS builder
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --user --no-cache-dir -r requirements.txt
+
+FROM python:3.12-slim
+WORKDIR /app
+COPY --from=builder /root/.local /root/.local
+COPY app.py .
+ENV PATH=/root/.local/bin:$PATH
+CMD ["python", "app.py"]</code></pre>
+
+<p>The pip cache, wheel cache, and any build-only packages stay in the builder stage. The runtime image gets exactly the installed packages — no <code>pip install</code> at runtime, no build tools.</p>
+
+<h2>4. Caching: The Difference Between 2 Minutes and 11</h2>
+
+<p>Multi-stage doesn't automatically make builds fast — layer caching does. Docker caches a layer only if nothing above it changed. So order your Dockerfile by <strong>dependency stability</strong>:</p>
+
+<ul>
+<li><strong>Copy dependency manifests first</strong> (<code>go.mod</code>, <code>requirements.txt</code>, <code>package-lock.json</code>) and run the dependency resolution step. If your code changes but dependencies don't, this layer is reused.</li>
+<li><strong>Copy source code last</strong> — it changes every commit, so it should be the layer closest to the build step.</li>
+<li><strong>Use <code>--mount=type=cache</code></strong> for package caches so they survive across builds: <code>RUN --mount=type=cache,target=/root/.cache/go-build go build ...</code>. The cache lives on the builder host, not in the image layers.</li>
+</ul>
+
+<p>One more trap: <code>COPY . .</code> before <code>RUN go mod download</code> invalidates the dependency cache on every commit. Move the manifest copy first — it's the single highest-impact fix for slow Docker builds.</p>
+
+<h2>5. Build Args and Target Selection</h2>
+
+<p>Two flags make multi-stage Dockerfiles flexible. <code>--target</code> lets CI build intermediate stages:</p>
+
+<pre><code>docker build --target builder -t myapp:build .
+docker build -t myapp:latest .</code></pre>
+
+<p>And <code>ARG</code> propagates build-time values (versions, registry mirrors) without hardcoding:</p>
+
+<pre><code>ARG GOLANG_VERSION=1.22
+FROM golang:${GOLANG_VERSION} AS builder</code></pre>
+
+<p>Use <code>--build-arg</code> to override at build time. Remember: <code>ARG</code> is build-time only — it never survives into the final image. For runtime configuration, use environment variables.</p>
+
+<h2>Summary</h2>
+
+<ul>
+<li><strong>Never ship a build toolchain in a runtime image.</strong> Compilers, package managers, and headers belong in a builder stage.</li>
+<li><strong>Copy artifacts with <code>COPY --from</code></strong> — only what the app needs at runtime crosses the stage boundary.</li>
+<li><strong>Order layers by change frequency</strong>: manifests first, source last. Add cache mounts for package managers.</li>
+<li><strong>Consider distroless or scratch</strong> for static binaries — fewer packages means fewer CVEs.</li>
+<li><strong>Verify with <code>docker scout</code> or <code>trivy image</code></strong> — measure the vulnerability count before and after; the drop is usually the most convincing metric.</li>
+</ul>
+
+<p>Start with one service. Rewrite its Dockerfile as multi-stage, check the image size and scan results, then roll the pattern out to the rest of your fleet. Smaller images pull faster, deploy faster, and give attackers less to work with — three wins from one Dockerfile change.</p>
+
+</article>
+<footer><p>© 2026 DevOpsDaily · <a href="../index.html">Home</a></p></footer>
+</div>
+<script data-goatcounter="https://devopsdailyblog.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+</body>
+</html>
