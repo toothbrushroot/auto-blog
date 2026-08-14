@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A practical guide to Kubernetes RBAC — Roles, ClusterRoles, RoleBindings, and ClusterRoleBindings explained with real YAML examples, least-privilege patterns, and the mistakes that get clusters hacked.">
+<title>Kubernetes RBAC: Lock Down Your Cluster with Role-Based Access Control - DevOpsDaily</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.8;font-size:1.05rem}
+.container{max-width:750px;margin:0 auto;padding:2rem 1rem}
+nav{margin-bottom:1rem}
+nav a{color:#58a6ff;text-decoration:none;font-size:.9rem}
+h1{font-size:2rem;color:#f0f6fc;margin:.5rem 0 1.5rem;line-height:1.3}
+.date{color:#8b949e;font-size:.9rem;margin-bottom:2rem}
+article h2{color:#f0f6fc;font-size:1.4rem;margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid #21262d}
+article h3{color:#f0f6fc;font-size:1.15rem;margin:1.5rem 0 .5rem}
+article p{margin-bottom:1rem;color:#b1bac4}
+article code{background:#21262d;padding:.15rem .4rem;border-radius:3px;font-size:.9rem;color:#ffa657}
+article pre{background:#161b22;border:1px solid #21262d;border-radius:6px;padding:1rem;overflow-x:auto;margin-bottom:1.5rem;font-size:.9rem}
+article pre code{background:none;padding:0;color:#c9d1d9}
+article a{color:#58a6ff}
+article ul,article ol{margin:0 0 1rem 1.5rem;color:#b1bac4}
+article li{margin-bottom:.3rem}
+article blockquote{border-left:3px solid #30363d;padding-left:1rem;color:#8b949e;margin-bottom:1rem;font-style:italic}
+footer{text-align:center;padding:2rem;color:#484f58;font-size:.85rem;border-top:1px solid #21262d;margin-top:3rem}
+footer a{color:#484f58}
+</style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Kubernetes RBAC: Lock Down Your Cluster with Role-Based Access Control",
+  "description": "A practical guide to Kubernetes RBAC — Roles, ClusterRoles, RoleBindings, and ClusterRoleBindings explained with real YAML examples, least-privilege patterns, and the mistakes that get clusters hacked.",
+  "datePublished": "2026-08-14",
+  "dateModified": "2026-08-14",
+  "author": {"@type": "Organization", "name": "DevOpsDaily"},
+  "publisher": {"@type": "Organization", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"},
+  "url": "https://toothbrushroot.github.io/auto-blog/posts/kubernetes-rbac-guide.html",
+  "isPartOf": {"@type": "Blog", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"}
+}
+</script>
+<meta property="og:title" content="Kubernetes RBAC: Lock Down Your Cluster with Role-Based Access Control">
+<meta property="og:description" content="A practical guide to Kubernetes RBAC — Roles, ClusterRoles, RoleBindings, and ClusterRoleBindings explained with real YAML examples, least-privilege patterns, and the mistakes that get clusters hacked.">
+<meta property="og:url" content="https://toothbrushroot.github.io/auto-blog/posts/kubernetes-rbac-guide.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="DevOpsDaily">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Kubernetes RBAC: Lock Down Your Cluster with Role-Based Access Control">
+<meta name="twitter:description" content="A practical guide to Kubernetes RBAC — Roles, ClusterRoles, RoleBindings, and ClusterRoleBindings explained with real YAML examples, least-privilege patterns, and the mistakes that get clusters hacked.">
+<link rel="canonical" href="https://toothbrushroot.github.io/auto-blog/posts/kubernetes-rbac-guide.html">
+</head>
+<body>
+<div class="container">
+<nav><a href="../index.html">← Back to DevOpsDaily</a></nav>
+<h1>Kubernetes RBAC: Lock Down Your Cluster with Role-Based Access Control</h1>
+<div class="date">August 14, 2026 · 7 min read</div>
+<article>
+
+<p>Most Kubernetes clusters start the same way: you create the cluster, add yourself as <code>cluster-admin</code>, and everyone who needs to touch it gets admin too. Then a developer with <code>cluster-admin</code> runs <code>kubectl delete ns production</code> by accident, or a CI token with full permissions leaks, and suddenly your whole cluster is someone else's sandbox.</p>
+
+<p>RBAC (Role-Based Access Control) is how Kubernetes answers the question <em>"who can do what, where?"</em> It's the difference between "everyone can do everything everywhere" and "developers deploy to their namespace, SREs manage the cluster, CI robots only touch their own pipeline." This guide covers the four core objects, real YAML you can copy, and the mistakes that show up in almost every security audit.</p>
+
+<h2>1. The Four Core Objects</h2>
+
+<p>RBAC has exactly four resource types. Understand these and everything else is composition:</p>
+
+<ul>
+<li><strong>Role</strong> — a set of permissions <em>inside one namespace</em>. Scoped to a namespace.</li>
+<li><strong>ClusterRole</strong> — a set of permissions <em>cluster-wide</em> (or reusable across namespaces). Not scoped.</li>
+<li><strong>RoleBinding</strong> — grants a Role to users, groups, or service accounts <em>within a namespace</em>.</li>
+<li><strong>ClusterRoleBinding</strong> — grants a Role/ClusterRole <em>cluster-wide</em>.</li>
+</ul>
+
+<p>The relationship is simple: a Role <strong>defines</strong> permissions, a Binding <strong>attaches</strong> them to a subject. A RoleBinding can even reference a ClusterRole — that's the standard pattern for sharing read-only access across namespaces without duplicating rules.</p>
+
+<h2>2. A Role, Not a RoleModel: Your First Namespaced Role</h2>
+
+<p>Say you want to give the <code>backend</code> team full control over deployments, pods, and services in the <code>staging</code> namespace — but nothing else:</p>
+
+<pre><code>apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: staging
+  name: backend-deployer
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "statefulsets", "replicasets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]</code></pre>
+
+<p>Notice the details that matter:</p>
+<ul>
+<li><strong>apiGroups:</strong> core resources (pods, services) live in <code>""</code>, workload resources live in <code>"apps"</code>.</li>
+<li><strong>verbs:</strong> read-only <code>get/list/watch</code> for pods and secrets — the team can <em>see</em> secrets but not edit them.</li>
+<li><strong>scope:</strong> <code>namespace: staging</code> means this role is powerless anywhere else.</li>
+</ul>
+
+<h2>3. Binding It: RoleBinding</h2>
+
+<p>A Role with no binding grants nothing. Attach it to the team:</p>
+
+<pre><code>apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  namespace: staging
+  name: backend-deployer-binding
+subjects:
+- kind: Group
+  name: backend-team
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: backend-deployer
+  apiGroup: rbac.authorization.k8s.io</code></pre>
+
+<p>Bind to <strong>groups, not individual users</strong>. When someone joins or leaves the team, your OIDC/SSO provider updates the group membership and your cluster config doesn't change. Binding to individual usernames means editing RBAC YAML for every hire and firing — a maintenance trap.</p>
+
+<h2>4. ClusterRoles: When You Need Cluster-Wide Access</h2>
+
+<p>ClusterRoles exist for two cases: permissions that span namespaces (like reading nodes, or managing a CRD), and permissions you want to <em>reuse</em> namespace-by-namespace via RoleBindings.</p>
+
+<pre><code>apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: namespace-viewer
+rules:
+- apiGroups: [""]
+  resources: ["namespaces", "nodes", "persistentvolumes"]
+  verbs: ["get", "list", "watch"]</code></pre>
+
+<p>Then give a developer read-only access to <em>every</em> namespace without one Role per namespace:</p>
+
+<pre><code>apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: sre-viewer
+subjects:
+- kind: User
+  name: sre-alice
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: namespace-viewer
+  apiGroup: rbac.authorization.k8s.io</code></pre>
+
+<p>The built-in <code>view</code>, <code>edit</code>, <code>admin</code>, and <code>cluster-admin</code> ClusterRoles cover most day-one needs. <code>view</code> is read-only across a namespace, <code>edit</code> adds create/update/delete, <code>admin</code> adds role management, and <code>cluster-admin</code> can do literally anything. Start from <code>view</code> and add only what the job requires.</p>
+
+<h2>5. Service Accounts: The CI/CD Pattern</h2>
+
+<p>Pipelines shouldn't use your personal kubeconfig. Create a dedicated service account and bind it to the minimum it needs:</p>
+
+<pre><code>kubectl create serviceaccount ci-deployer -n staging
+kubectl create rolebinding ci-deployer-binding \
+  --clusterrole=edit \
+  --serviceaccount=staging:ci-deployer \
+  -n staging</code></pre>
+
+<p>Now your CI job authenticates with the <code>ci-deployer</code> token and can edit resources in <code>staging</code> — but cannot touch <code>production</code>, cannot delete namespaces, and cannot grant anyone else permissions. If that token leaks, the blast radius is one namespace.</p>
+
+<h2>6. Verify Before You Trust: kubectl auth can-i</h2>
+
+<p>Never guess whether a subject has access. Ask the API server:</p>
+
+<pre><code># Can the current user delete pods in staging?
+kubectl auth can-i delete pods -n staging
+
+# Can the ci-deployer SA list secrets in production?
+kubectl auth can-i list secrets -n production \
+  --as=system:serviceaccount:staging:ci-deployer
+
+# What can the current user do across the cluster?
+kubectl auth can-i --list -n staging</code></pre>
+
+<p>Run these checks after every binding change. They're instant, they test the real authorization chain, and they catch typos like a missing <code>apiGroup</code> that silently scopes your rule to the wrong resource group.</p>
+
+<h2>7. Mistakes That Get Clusters Hacked</h2>
+
+<p>After auditing real clusters, the same five issues show up again and again:</p>
+
+<ul>
+<li><strong>Everyone is cluster-admin.</strong> If more than a handful of humans have <code>cluster-admin</code>, your cluster is one leaked kubeconfig away from being deleted. Audit with <code>kubectl get clusterrolebindings</code> and prune.</li>
+<li><strong>Wildcard verbs.</strong> <code>verbs: ["*"]</code> on a role is a code smell. It grants future verbs you don't even know exist yet.</li>
+<li><strong>Secrets readable by everyone.</strong> A read-only <code>view</code> role can still read <em>all</em> secrets in a namespace. If your deployment pipeline stores real credentials in plain Secrets (it shouldn't — use Sealed Secrets or External Secrets), limit who can read them.</li>
+<li><strong>Binding users instead of groups.</strong> Individual user bindings don't scale and rot silently.</li>
+<li><strong>Ignoring the default deny.</strong> RBAC is deny-by-default. If something doesn't work after adding a role, check <code>kubectl auth can-i</code> before assuming the role is broken — usually the subject isn't actually bound.</li>
+</ul>
+
+<blockquote>Least privilege isn't a compliance checkbox. In Kubernetes, RBAC is the difference between a leaked token being an incident and a leaked token being a catastrophe.</blockquote>
+
+<h2>Summary</h2>
+
+<p>RBAC is four objects and one principle. Roles and ClusterRoles <em>define</em> permissions; RoleBindings and ClusterRoleBindings <em>grant</em> them. Bind to groups, scope to namespaces, prefer <code>view</code> over <code>edit</code> over <code>admin</code>, give CI its own service accounts, and verify everything with <code>kubectl auth can-i</code>. Do that and the next security audit won't have a single finding about your cluster's access control.</p>
+
+</article>
+<footer><p>© 2026 DevOpsDaily · <a href="../index.html">Home</a></p></footer>
+</div>
+<script data-goatcounter="https://devopsdailyblog.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+</body>
+</html>
