@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A practical guide to Kubernetes Horizontal Pod Autoscaling (HPA) — how HPA works, metrics-server setup, CPU and custom metrics, scaling policies, and production pitfalls.">
+<title>Kubernetes HPA: Horizontal Pod Autoscaling Explained with Real Examples - DevOpsDaily</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.8;font-size:1.05rem}
+.container{max-width:750px;margin:0 auto;padding:2rem 1rem}
+nav{margin-bottom:1rem}
+nav a{color:#58a6ff;text-decoration:none;font-size:.9rem}
+h1{font-size:2rem;color:#f0f6fc;margin:.5rem 0 1.5rem;line-height:1.3}
+.date{color:#8b949e;font-size:.9rem;margin-bottom:2rem}
+article h2{color:#f0f6fc;font-size:1.4rem;margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid #21262d}
+article h3{color:#f0f6fc;font-size:1.15rem;margin:1.5rem 0 .5rem}
+article p{margin-bottom:1rem;color:#b1bac4}
+article code{background:#21262d;padding:.15rem .4rem;border-radius:3px;font-size:.9rem;color:#ffa657}
+article pre{background:#161b22;border:1px solid #21262d;border-radius:6px;padding:1rem;overflow-x:auto;margin-bottom:1.5rem;font-size:.9rem}
+article pre code{background:none;padding:0;color:#c9d1d9}
+article a{color:#58a6ff}
+article ul,article ol{margin:0 0 1rem 1.5rem;color:#b1bac4}
+article li{margin-bottom:.3rem}
+article blockquote{border-left:3px solid #30363d;padding-left:1rem;color:#8b949e;margin-bottom:1rem;font-style:italic}
+footer{text-align:center;padding:2rem;color:#484f58;font-size:.85rem;border-top:1px solid #21262d;margin-top:3rem}
+footer a{color:#484f58}
+</style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Kubernetes HPA: Horizontal Pod Autoscaling Explained with Real Examples",
+  "description": "A practical guide to Kubernetes Horizontal Pod Autoscaling (HPA) — how HPA works, metrics-server setup, CPU and custom metrics, scaling policies, and production pitfalls.",
+  "datePublished": "2026-08-16",
+  "dateModified": "2026-08-16",
+  "author": {"@type": "Organization", "name": "DevOpsDaily"},
+  "publisher": {"@type": "Organization", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"},
+  "url": "https://toothbrushroot.github.io/auto-blog/posts/kubernetes-hpa-autoscaling.html",
+  "isPartOf": {"@type": "Blog", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"}
+}
+</script>
+<meta property="og:title" content="Kubernetes HPA: Horizontal Pod Autoscaling Explained with Real Examples">
+<meta property="og:description" content="A practical guide to Kubernetes Horizontal Pod Autoscaling (HPA) — how HPA works, metrics-server setup, CPU and custom metrics, scaling policies, and production pitfalls.">
+<meta property="og:url" content="https://toothbrushroot.github.io/auto-blog/posts/kubernetes-hpa-autoscaling.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="DevOpsDaily">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Kubernetes HPA: Horizontal Pod Autoscaling Explained with Real Examples">
+<meta name="twitter:description" content="A practical guide to Kubernetes Horizontal Pod Autoscaling (HPA) — how HPA works, metrics-server setup, CPU and custom metrics, scaling policies, and production pitfalls.">
+<link rel="canonical" href="https://toothbrushroot.github.io/auto-blog/posts/kubernetes-hpa-autoscaling.html">
+</head>
+<body>
+<div class="container">
+<nav><a href="../index.html">← Back to DevOpsDaily</a></nav>
+<h1>Kubernetes HPA: Horizontal Pod Autoscaling Explained with Real Examples</h1>
+<div class="date">August 16, 2026 · 8 min read</div>
+<article>
+
+<p>Your service handles 100 requests per second at 3am and 5,000 at 10am. If you run a fixed number of replicas, you're either wasting money or dropping requests. Kubernetes Horizontal Pod Autoscaling (HPA) solves this by adjusting the replica count automatically based on observed metrics. But set it up naively and you get thrashing, zombie replicas, and a metric feedback loop that makes things <em>worse</em>.</p>
+
+<p>Here's how HPA actually works, how to configure it correctly, and the pitfalls that bite everyone in production.</p>
+
+<h2>1. How HPA Works Under the Hood</h2>
+
+<p>HPA is a control loop in the kube-controller-manager. Every <code>--horizontal-pod-autoscaler-sync-period</code> (default 15 seconds), it fetches metrics for your pods, computes the desired replica count, and writes it back to the Deployment or StatefulSet.</p>
+
+<p>The core formula is simple:</p>
+
+<pre><code>desiredReplicas = ceil(currentReplicas × (currentMetricValue / desiredMetricValue))</code></pre>
+
+<p>If your target is 50% CPU and pods are at 75%, HPA scales up by a factor of 1.5. If they drop to 25%, it scales down by half. Two things make this formula tricky in practice:</p>
+
+<ul>
+<li><strong>Metrics lag.</strong> CPU metrics are averaged over the last 1–2 minutes, so HPA reacts to the past, not the present. Spiky traffic needs headroom or proactive scaling.</li>
+<li><strong>Scale-down is slow on purpose.</strong> By default HPA waits 5 minutes of sustained low utilization before shrinking. This prevents the classic "scale down, spike, scale up" thrash loop.</li>
+</ul>
+
+<p>HPA doesn't know anything about your request rate, queue depth, or business metrics — unless you feed it to the metrics API. That's the key insight: <strong>CPU alone is usually the wrong metric.</strong></p>
+
+<h2>2. Prerequisite: Install metrics-server</h2>
+
+<p>HPA needs the <code>metrics.k8s.io</code> API, which is provided by <a href="https://github.com/kubernetes-sigs/metrics-server">metrics-server</a>. Many clusters — especially kubeadm and cloud-provider ones — don't ship it by default.</p>
+
+<pre><code>kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+
+# Verify it works
+kubectl top nodes
+kubectl top pods -n default</code></pre>
+
+<p>If <code>kubectl top</code> errors with <code>metrics not available yet</code>, give it a minute. If it errors with <code>connection refused</code> on 10250, you're hitting the classic issue: metrics-server can't reach the kubelet because of TLS or network policy. For test clusters, the common fix is adding <code>--kubelet-insecure-tls</code> to the deployment args — never do that in production.</p>
+
+<h2>3. Your First HPA: CPU-Based Scaling</h2>
+
+<pre><code>apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60</code></pre>
+
+<p>This scales the <code>api</code> Deployment between 2 and 10 replicas, keeping average CPU utilization around 60%. Note the API version: <code>autoscaling/v2</code>. The old <code>v1</code> only supports CPU and has been deprecated — everything you see written with <code>autoscaling/v2beta2</code> should now use <code>autoscaling/v2</code>.</p>
+
+<p>Apply it and watch:</p>
+
+<pre><code>kubectl apply -f hpa.yaml
+kubectl get hpa -w
+# NAME    REFERENCE      TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
+# api-hpa Deployment/api 45%/60%   2         10        2          3m</code></pre>
+
+<p>Now generate load and watch replicas climb:</p>
+
+<pre><code>kubectl run load-generator --image=busybox -- /bin/sh -c \
+  "while true; do wget -q -O- http://api.default.svc:8080/ >/dev/null; done"</code></pre>
+
+<p>Within a minute you'll see <code>TARGETS</code> cross 60% and replicas increase. That's HPA working — but CPU scaling has a serious blind spot.</p>
+
+<h2>4. Why CPU-Only Scaling Fails</h2>
+
+<p>CPU utilization is a <strong>lagging indicator</strong> of actual user load. Three production scenarios where CPU-only HPA lets you down:</p>
+
+<ul>
+<li><strong>Request queuing.</strong> Your app accepts requests, puts them on a queue, and processes them in batches. CPU stays low while the queue grows — users wait, replicas don't.</li>
+<li><strong>I/O-bound workloads.</strong> Database queries, Redis calls, file I/O — these burn no CPU but add latency. CPU says "fine", p99 says "on fire".</li>
+<li><strong>Background jobs.</strong> A cron-like job inside your pods spikes CPU at 3am and HPA scales up for a workload that doesn't serve traffic. Money burned.</li>
+</ul>
+
+<p>The fix: scale on <strong>custom or external metrics</strong> that actually reflect demand.</p>
+
+<h2>5. Custom Metrics: Scale on What Matters</h2>
+
+<p>For custom metrics you need a metrics adapter — the most common is <a href="https://github.com/kubernetes-sigs/prometheus-adapter">prometheus-adapter</a>, which exposes Prometheus queries through the <code>custom.metrics.k8s.io</code> API. Once it's installed, you can scale on request rate:</p>
+
+<pre><code>apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-http-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+  - type: Pods
+    pods:
+      metric:
+        name: http_requests_per_second
+      target:
+        type: AverageValue
+        averageValue: 500</code></pre>
+
+<p>This keeps each pod at roughly 500 req/s. The <code>type: Pods</code> metric aggregates a per-pod metric and divides by the pod count — perfect for request rates exposed via Prometheus client libraries.</p>
+
+<p>The rule of thumb: <strong>scale on the metric that directly maps to capacity</strong>. For an API gateway, that's requests per second. For a queue consumer, that's queue depth (<code>type: Object</code> metric targeting the queue). For a WebSocket server, that's active connections. CPU is a proxy; these are the real thing.</p>
+
+<h2>6. Scaling Policies: Tame the Thrash</h2>
+
+<p>Default HPA behavior scales up immediately but waits 5 minutes before scaling down. Sometimes you want different behavior — fast scale-up for flash traffic, or conservative scale-down to avoid killing warm pods:</p>
+
+<pre><code>spec:
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Pods
+        value: 1
+        periodSeconds: 60</code></pre>
+
+<p>This says: scale up by up to 100% every 15 seconds (double capacity in a minute), but scale down at most 1 pod per minute after a 5-minute stabilization window. Your app never falls over under a spike, and you don't shed capacity just because one poll caught a dip.</p>
+
+<h2>7. Production Pitfalls</h2>
+
+<p>These are the mistakes I see most often — and have made myself:</p>
+
+<ul>
+<li><strong>No resource requests.</strong> HPA's CPU utilization is computed against <code>requests.cpu</code>, not the limit. If you forget to set requests, HPA either refuses to compute or misbehaves. Always set requests on every container you autoscale.</li>
+<li><strong>Scaling based on a single pod's metrics.</strong> One hot pod skews the average. Use <code>AverageValue</code> with a sane threshold and check <code>kubectl describe hpa</code> for per-pod metric breakdowns when debugging.</li>
+<li><strong>maxReplicas too low.</strong> If your HPA hits the ceiling during a launch, you get dropped requests and no signal until it's too late. Set alerts on <code>hpa_max_replicas</code> being reached.</li>
+<li><strong>Autoscaling stateful workloads.</strong> HPA works on StatefulSets, but scaling a database or a stateful cache is how you corrupt data. Autoscale stateless tiers; scale stateful tiers manually or with operators.</li>
+<li><strong>Ignoring pod startup time.</strong> If your app takes 60 seconds to become ready and traffic spikes, HPA adds pods but they're not serving for a minute. Pair HPA with <code>startupProbe</code> and aggressive scale-up policies, or use KEDA's HTTP add-on for preemptive scaling.</li>
+<li><strong>Forgetting the cluster can't actually fit more pods.</strong> HPA will happily target 20 replicas while the node pool only fits 8. For cloud clusters, pair HPA with Cluster Autoscaler so nodes scale with pods — otherwise you're autoscaling into a wall.</li>
+</ul>
+
+<h2>8. Debugging HPA</h2>
+
+<pre><code># See the exact replica calculations and events
+kubectl describe hpa api-hpa
+
+# Check the raw metrics HPA sees
+kubectl get --raw /apis/metrics.k8s.io/v1beta1/namespaces/default/pods
+
+# Check custom metrics availability
+kubectl get --raw /apis/custom.metrics.k8s.io/v1beta1 | head
+
+# Watch status conditions
+kubectl get hpa api-hpa -o jsonpath='{.status.conditions}'</code></pre>
+
+<p>If <code>kubectl describe hpa</code> shows <code>failed to get cpu utilization: unable to get metrics</code>, it's almost always metrics-server. If it shows <code>invalid metrics</code>, your custom metric query returns nothing — check the prometheus-adapter config, not the HPA.</p>
+
+<h2>Summary</h2>
+
+<ul>
+<li>HPA adjusts replica count from the metrics API using a simple ratio formula — but metrics lag, so CPU-only autoscaling under-reacts to real load.</li>
+<li>Install metrics-server first; use <code>autoscaling/v2</code>, never the old v1 API.</li>
+<li>Scale on the metric that directly maps to capacity: req/s, queue depth, connections — not CPU as a proxy.</li>
+<li>Configure <code>behavior</code> policies so scale-up is fast and scale-down is conservative.</li>
+<li>Always set resource requests, set an alert on max replicas, and pair HPA with Cluster Autoscaler in the cloud.</li>
+</ul>
+
+<p>Autoscaling done right means your infra bill tracks your traffic curve and your p99 stays flat during spikes. Start with CPU to learn the loop, then move to real demand metrics — that's the difference between autoscaling that saves money and autoscaling that saves your weekend.</p>
+
+</article>
+<footer><p>© 2026 DevOpsDaily · <a href="../index.html">Home</a></p></footer>
+</div>
+<script data-goatcounter="https://devopsdailyblog.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+</body>
+</html>
