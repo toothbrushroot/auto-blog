@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A practical guide to Kubernetes persistent storage — PersistentVolumes, PersistentVolumeClaims, and StorageClasses with real YAML examples, dynamic provisioning, StatefulSet patterns, and the pitfalls that cause data loss.">
+<title>Kubernetes Persistent Storage: PV, PVC, and StorageClass Explained - DevOpsDaily</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.8;font-size:1.05rem}
+.container{max-width:750px;margin:0 auto;padding:2rem 1rem}
+nav{margin-bottom:1rem}
+nav a{color:#58a6ff;text-decoration:none;font-size:.9rem}
+h1{font-size:2rem;color:#f0f6fc;margin:.5rem 0 1.5rem;line-height:1.3}
+.date{color:#8b949e;font-size:.9rem;margin-bottom:2rem}
+article h2{color:#f0f6fc;font-size:1.4rem;margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid #21262d}
+article h3{color:#f0f6fc;font-size:1.15rem;margin:1.5rem 0 .5rem}
+article p{margin-bottom:1rem;color:#b1bac4}
+article code{background:#21262d;padding:.15rem .4rem;border-radius:3px;font-size:.9rem;color:#ffa657}
+article pre{background:#161b22;border:1px solid #21262d;border-radius:6px;padding:1rem;overflow-x:auto;margin-bottom:1.5rem;font-size:.9rem}
+article pre code{background:none;padding:0;color:#c9d1d9}
+article a{color:#58a6ff}
+article ul,article ol{margin:0 0 1rem 1.5rem;color:#b1bac4}
+article li{margin-bottom:.3rem}
+article blockquote{border-left:3px solid #30363d;padding-left:1rem;color:#8b949e;margin-bottom:1rem;font-style:italic}
+footer{text-align:center;padding:2rem;color:#484f58;font-size:.85rem;border-top:1px solid #21262d;margin-top:3rem}
+footer a{color:#484f58}
+</style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Kubernetes Persistent Storage: PV, PVC, and StorageClass Explained",
+  "description": "A practical guide to Kubernetes persistent storage — PersistentVolumes, PersistentVolumeClaims, and StorageClasses with real YAML examples, dynamic provisioning, StatefulSet patterns, and the pitfalls that cause data loss.",
+  "datePublished": "2026-08-17",
+  "dateModified": "2026-08-17",
+  "author": {"@type": "Organization", "name": "DevOpsDaily"},
+  "publisher": {"@type": "Organization", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"},
+  "url": "https://toothbrushroot.github.io/auto-blog/posts/kubernetes-persistent-storage.html",
+  "isPartOf": {"@type": "Blog", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"}
+}
+</script>
+<meta property="og:title" content="Kubernetes Persistent Storage: PV, PVC, and StorageClass Explained">
+<meta property="og:description" content="A practical guide to Kubernetes persistent storage — PersistentVolumes, PersistentVolumeClaims, and StorageClasses with real YAML examples, dynamic provisioning, StatefulSet patterns, and the pitfalls that cause data loss.">
+<meta property="og:url" content="https://toothbrushroot.github.io/auto-blog/posts/kubernetes-persistent-storage.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="DevOpsDaily">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Kubernetes Persistent Storage: PV, PVC, and StorageClass Explained">
+<meta name="twitter:description" content="A practical guide to Kubernetes persistent storage — PersistentVolumes, PersistentVolumeClaims, and StorageClasses with real YAML examples, dynamic provisioning, StatefulSet patterns, and the pitfalls that cause data loss.">
+<link rel="canonical" href="https://toothbrushroot.github.io/auto-blog/posts/kubernetes-persistent-storage.html">
+</head>
+<body>
+<div class="container">
+<nav><a href="../index.html">← Back to DevOpsDaily</a></nav>
+<h1>Kubernetes Persistent Storage: PV, PVC, and StorageClass Explained</h1>
+<div class="date">August 17, 2026 · 8 min read</div>
+<article>
+
+<p>Your database pod restarts. The data is gone. You scale a StatefulSet down and the volume vanishes with the pod. This is the moment every DevOps engineer discovers the hard truth about Kubernetes: <strong>container filesystems are ephemeral</strong>. When a pod dies, its writable layer dies with it.</p>
+
+<p>For stateless services that's fine — that's what ReplicaSets are for. But databases, message queues, caches, and file uploads need storage that survives pod restarts, rescheduling, and node failures. That's what PersistentVolumes, PersistentVolumeClaims, and StorageClasses are for. Here's how they work together, with YAML you can actually use.</p>
+
+<h2>1. The Three-Layer Model</h2>
+
+<p>Kubernetes separates <em>what you need</em> from <em>what's available</em>:</p>
+
+<ul>
+<li><strong>PersistentVolume (PV)</strong> — a piece of actual storage in the cluster, provisioned by an admin or automatically by the system. Think of it as a disk that exists independently of any pod.</li>
+<li><strong>PersistentVolumeClaim (PVC)</strong> — a request for storage. Your pod declares "I need 10Gi, read-write, from the SSD class" and the claim binds to a matching PV.</li>
+<li><strong>StorageClass</strong> — the recipe for creating storage on demand. It maps to your cloud provider's volume types (EBS gp3, GCE PD, Azure Disk) and defines reclaim policies and performance tiers.</li>
+</ul>
+
+<blockquote>Think of PV as the physical disk, PVC as the lease agreement, and StorageClass as the disk factory.</blockquote>
+
+<h2>2. Static Provisioning: Admin Creates the Volume</h2>
+
+<p>The old-school way. An admin provisions a PV pointing at real storage:</p>
+
+<pre><code>apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgres-data-pv
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /mnt/data/postgres</code></pre>
+
+<p>Then an app claims it:</p>
+
+<pre><code>apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: manual</code></pre>
+
+<p>A claim binds to a PV when the requested size, access mode, and StorageClass all match. Once bound, the pod mounts it:</p>
+
+<pre><code>spec:
+  containers:
+    - name: postgres
+      image: postgres:16
+      volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: postgres-data</code></pre>
+
+<p>Static provisioning works, but it's tedious — every volume is hand-made, sized in advance, and usually wasted or undersized. In production you almost never do this. You use dynamic provisioning.</p>
+
+<h2>3. Dynamic Provisioning: StorageClass Does the Work</h2>
+
+<p>A StorageClass tells Kubernetes how to create volumes on demand. On AWS it looks like this:</p>
+
+<pre><code>apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: fast-ssd
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp3
+  iops: "3000"
+  encrypted: "true"
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer</code></pre>
+
+<p>Now your claim just references the class and Kubernetes provisions the volume automatically — no admin involved:</p>
+
+<pre><code>apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: fast-ssd
+  resources:
+    requests:
+      storage: 10Gi</code></pre>
+
+<p><code>kubectl get pvc</code> shows the claim go from <code>Pending</code> to <code>Bound</code> in seconds. The volume is created, attached to a node, and mounted — all without a human touching the cloud console.</p>
+
+<h2>4. Access Modes: One Writer or Many?</h2>
+
+<p>The <code>accessModes</code> field decides who can mount the volume and how:</p>
+
+<ul>
+<li><strong>ReadWriteOnce (RWO)</strong> — one node can mount it read-write. Default for most block storage (EBS, Azure Disk).</li>
+<li><strong>ReadOnlyMany (ROX)</strong> — many nodes can mount it read-only. Good for shared config or data files.</li>
+<li><strong>ReadWriteMany (RWX)</strong> — many nodes can mount read-write. Only works with file/object storage: NFS, CephFS, EFS, S3-backed CSI drivers.</li>
+</ul>
+
+<p>This is the #1 source of storage surprises. You deploy a multi-replica app with an RWO volume and half your replicas sit in <code>ContainerCreating</code>. They can't mount because the volume is already attached to another node. If you need multiple replicas sharing storage, you need a RWX-capable class, not block storage.</p>
+
+<h2>5. StatefulSets: Storage as Part of the Pod's Identity</h2>
+
+<p>StatefulSets pair each replica with its own volume using <code>volumeClaimTemplates</code>. When the pod is rescheduled, it reconnects to <em>its</em> volume — this is what makes stateful workloads (PostgreSQL, Cassandra, Kafka) safe to run on Kubernetes:</p>
+
+<pre><code>apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongo
+spec:
+  serviceName: mongo
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mongo
+  template:
+    metadata:
+      labels:
+        app: mongo
+    spec:
+      containers:
+        - name: mongo
+          image: mongo:7
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: fast-ssd
+        resources:
+          requests:
+            storage: 50Gi</code></pre>
+
+<p>Each replica gets a volume named <code>data-mongo-0</code>, <code>data-mongo-1</code>, <code>data-mongo-2</code>. Kill pod 1, it comes back on any node and reattaches to <code>data-mongo-1</code>. The data follows the identity, not the node.</p>
+
+<h2>6. Reclaim Policies: What Happens When You Delete the Claim?</h2>
+
+<p>Every PV has a <code>persistentVolumeReclaimPolicy</code>, set by its StorageClass:</p>
+
+<ul>
+<li><strong>Delete</strong> (default for most cloud classes) — deleting the PVC deletes the volume. <strong>This means your data is gone.</strong> Back up before you delete anything.</li>
+<li><strong>Retain</strong> — the PV stays around, unbound, so an admin can recover the data manually. Safe but requires cleanup.</li>
+<li><strong>Recycle</strong> — deprecated. Don't use it.</li>
+</ul>
+
+<blockquote>Never delete a PVC holding production data without a verified backup. "It's just a claim, I'll recreate it" is how databases get lost.</blockquote>
+
+<h2>7. Production Pitfalls</h2>
+
+<ul>
+<li><strong>Termination grace periods don't protect stateful data.</strong> A node failure can leave volumes in a broken state — enable volume snapshots via CSI and schedule them.</li>
+<li><strong>Don't use <code>hostPath</code> in production.</strong> It ties data to a specific node and bypasses the CSI lifecycle. It's fine for single-node dev clusters and nothing else.</li>
+<li><strong>Back up at the storage layer, not the pod layer.</strong> <code>kubectl exec ... pg_dump</code> is not a backup strategy. Use CSI snapshots (<code>VolumeSnapshot</code> CRDs) or provider-native backups.</li>
+<li><strong>Check <code>volumeBindingMode</code>.</strong> <code>WaitForFirstConsumer</code> delays provisioning until a pod actually needs the volume — avoids creating orphaned volumes for unused claims and makes topology-aware scheduling work on multi-AZ clusters.</li>
+<li><strong>Monitor PVC usage.</strong> Disks fill up silently. Watch <code>kubelet_volume_stats_used_bytes</code> in Prometheus and alert before 85%.</li>
+</ul>
+
+<h2>Summary</h2>
+
+<ul>
+<li><strong>PV</strong> — the storage itself. Exists independent of pods.</li>
+<li><strong>PVC</strong> — the request that binds to a PV. Pods mount claims, never PVs directly.</li>
+<li><strong>StorageClass</strong> — dynamic provisioning. Production standard; static PVs are the exception.</li>
+<li><strong>Access modes matter</strong> — RWO for single-writer apps, RWX for shared access. Pick the class to match.</li>
+<li><strong>Reclaim policy Delete means data loss</strong> when you delete the claim. Snapshot first.</li>
+</ul>
+
+<p>Storage is where Kubernetes stops being a convenient orchestration layer and starts being a stateful platform. Get the PV/PVC/StorageClass model right and your databases run as smoothly as your stateless APIs — and survive a node reboot without losing a byte.</p>
+
+</article>
+<footer><p>© 2026 DevOpsDaily · <a href="../index.html">Home</a></p></footer>
+</div>
+<script data-goatcounter="https://devopsdailyblog.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+</body>
+</html>
