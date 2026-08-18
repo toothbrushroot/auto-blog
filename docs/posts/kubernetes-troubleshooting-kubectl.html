@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A practical guide to Kubernetes troubleshooting with kubectl — diagnosing CrashLoopBackOff, ImagePullBackOff, Pending pods, and connection failures with real commands and a repeatable debugging workflow.">
+<title>Kubernetes Troubleshooting with kubectl: A Practical Debugging Guide - DevOpsDaily</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.8;font-size:1.05rem}
+.container{max-width:750px;margin:0 auto;padding:2rem 1rem}
+nav{margin-bottom:1rem}
+nav a{color:#58a6ff;text-decoration:none;font-size:.9rem}
+h1{font-size:2rem;color:#f0f6fc;margin:.5rem 0 1.5rem;line-height:1.3}
+.date{color:#8b949e;font-size:.9rem;margin-bottom:2rem}
+article h2{color:#f0f6fc;font-size:1.4rem;margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid #21262d}
+article h3{color:#f0f6fc;font-size:1.15rem;margin:1.5rem 0 .5rem}
+article p{margin-bottom:1rem;color:#b1bac4}
+article code{background:#21262d;padding:.15rem .4rem;border-radius:3px;font-size:.9rem;color:#ffa657}
+article pre{background:#161b22;border:1px solid #21262d;border-radius:6px;padding:1rem;overflow-x:auto;margin-bottom:1.5rem;font-size:.9rem}
+article pre code{background:none;padding:0;color:#c9d1d9}
+article a{color:#58a6ff}
+article ul,article ol{margin:0 0 1rem 1.5rem;color:#b1bac4}
+article li{margin-bottom:.3rem}
+article blockquote{border-left:3px solid #30363d;padding-left:1rem;color:#8b949e;margin-bottom:1rem;font-style:italic}
+footer{text-align:center;padding:2rem;color:#484f58;font-size:.85rem;border-top:1px solid #21262d;margin-top:3rem}
+footer a{color:#484f58}
+</style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Kubernetes Troubleshooting with kubectl: A Practical Debugging Guide",
+  "description": "A practical guide to Kubernetes troubleshooting with kubectl — diagnosing CrashLoopBackOff, ImagePullBackOff, Pending pods, and connection failures with real commands and a repeatable debugging workflow.",
+  "datePublished": "2026-08-18",
+  "dateModified": "2026-08-18",
+  "author": {"@type": "Organization", "name": "DevOpsDaily"},
+  "publisher": {"@type": "Organization", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"},
+  "url": "https://toothbrushroot.github.io/auto-blog/posts/kubernetes-troubleshooting-kubectl.html",
+  "isPartOf": {"@type": "Blog", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"}
+}
+</script>
+<meta property="og:title" content="Kubernetes Troubleshooting with kubectl: A Practical Debugging Guide">
+<meta property="og:description" content="A practical guide to Kubernetes troubleshooting with kubectl — diagnosing CrashLoopBackOff, ImagePullBackOff, Pending pods, and connection failures with real commands and a repeatable debugging workflow.">
+<meta property="og:url" content="https://toothbrushroot.github.io/auto-blog/posts/kubernetes-troubleshooting-kubectl.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="DevOpsDaily">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Kubernetes Troubleshooting with kubectl: A Practical Debugging Guide">
+<meta name="twitter:description" content="A practical guide to Kubernetes troubleshooting with kubectl — diagnosing CrashLoopBackOff, ImagePullBackOff, Pending pods, and connection failures with real commands and a repeatable debugging workflow.">
+<link rel="canonical" href="https://toothbrushroot.github.io/auto-blog/posts/kubernetes-troubleshooting-kubectl.html">
+</head>
+<body>
+<div class="container">
+<nav><a href="../index.html">← Back to DevOpsDaily</a></nav>
+<h1>Kubernetes Troubleshooting with kubectl: A Practical Debugging Guide</h1>
+<div class="date">August 18, 2026 · 8 min read</div>
+<article>
+
+<p>Your pod is in <code>CrashLoopBackOff</code>. Or <code>ImagePullBackOff</code>. Or it's stuck in <code>Pending</code> for an hour. The deployment was working yesterday — nothing changed. Sound familiar?</p>
+
+<p>Kubernetes failures all look the same at first glance: a red status, a cryptic message, and a ticket in your queue. But almost every problem falls into a small set of categories, and each category has a fixed set of diagnostic commands. Learn those, and you stop guessing and start fixing.</p>
+
+<p>Here's the troubleshooting workflow I use in production, ordered from cheapest to most expensive. Run these in order and you'll find the root cause in minutes, not hours.</p>
+
+<h2>1. The First Three Commands: Always</h2>
+
+<p>Before touching anything, get the lay of the land:</p>
+
+<pre><code># Everything in the namespace, with status
+kubectl get all -n myapp
+
+# Pods with restarts and age
+kubectl get pods -n myapp -o wide
+
+# The full story on a single pod
+kubectl describe pod my-api-7d4f8b9c6c-xk9j2 -n myapp</code></pre>
+
+<p><code>kubectl describe</code> is the single most valuable command in Kubernetes debugging. It shows <strong>Events</strong> at the bottom — the actual reason things went wrong, written by the kubelet and the controller manager. "Failed to pull image", "Back-off restarting failed container", "0/3 nodes are available: 1 Insufficient memory". The event section is the answer key. Read it first.</p>
+
+<blockquote>Rule of thumb: if you can't tell what's wrong after running these three commands, you haven't read the Events section carefully enough.</blockquote>
+
+<h2>2. CrashLoopBackOff: The Container Won't Stay Up</h2>
+
+<p>The pod starts, crashes, restarts, crashes. The most common cause is an application error, not a Kubernetes problem. Three things to check, in order:</p>
+
+<pre><code># Current logs
+kubectl logs my-api-7d4f8b9c6c-xk9j2 -n myapp
+
+# Logs from the previous, crashed instance
+kubectl logs my-api-7d4f8b9c6c-xk9j2 -n myapp --previous
+
+# If there are multiple containers in the pod
+kubectl logs my-api-7d4f8b9c6c-xk9j2 -n myapp -c sidecar</code></pre>
+
+<p><code>--previous</code> is the move. When a container crashes and restarts, the current logs are empty or show only the new attempt. The crash output — the stack trace, the panic, the <code>FATAL</code> line — is in the previous instance's logs.</p>
+
+<p>Common crash causes I see weekly:</p>
+<ul>
+<li><strong>Missing environment variables</strong> — the app reads <code>DATABASE_URL</code>, it's not set, it panics. Check your ConfigMaps and Secrets.</li>
+<li><strong>Startup command fails</strong> — the container image expects an entrypoint that doesn't exist, or a volume mount isn't writable.</li>
+<li><strong>Readiness/liveness probe too aggressive</strong> — the app takes 60 seconds to start, your liveness probe kills it at 30. Add a startupProbe (see our <a href="kubernetes-health-probes.html">health probes guide</a>).</li>
+<li><strong>Out of memory</strong> — the kernel kills the process (OOMKilled). Check the status field in <code>kubectl get pod</code> output: it literally says <code>OOMKilled</code>.</li>
+</ul>
+
+<h2>3. ImagePullBackOff: The Image Isn't There</h2>
+
+<p>Kubernetes can't pull your container image. The reasons are usually boring:</p>
+
+<pre><code># See the exact pull error
+kubectl describe pod my-api-7d4f8b9c6c-xk9j2 -n myapp | grep -A 5 Events</code></pre>
+
+<p>Then check the obvious suspects:</p>
+<ul>
+<li><strong>Tag doesn't exist</strong> — <code>myapp:latest</code> was never pushed, or a typo in the tag. Verify with <code>docker manifest inspect myapp:tag</code> or check the registry.</li>
+<li><strong>Private registry credentials</strong> — the cluster can't authenticate. Create a <code>docker-registry</code> secret and reference it in the pod spec: <code>imagePullSecrets</code>. This one gets everyone at least once.</li>
+<li><strong>Registry unreachable</strong> — network policy, firewall, or the registry is down. Test from a node if you can.</li>
+<li><strong>Wrong repository path</strong> — <code>registry.example.com/app</code> vs <code>registry.example.com/team/app</code>. Sloppy copy-paste from a README.</li>
+</ul>
+
+<h2>4. Pending: The Pod Can't Be Scheduled</h2>
+
+<p>A pod stuck in <code>Pending</code> means the scheduler hasn't found a node for it. Again, <code>describe</code> tells you why:</p>
+
+<pre><code>kubectl describe pod my-api-7d4f8b9c6c-xk9j2 -n myapp
+# Look for lines like:
+#   0/3 nodes are available: 1 node(s) had untolerated taint,
+#   2 Insufficient cpu. preemption: 0/3 nodes available.</code></pre>
+
+<p>The classic causes:</p>
+<ul>
+<li><strong>Resource requests exceed node capacity</strong> — you asked for 8 CPU but your biggest node has 4. Either shrink the requests or add nodes.</li>
+<li><strong>Taints and tolerations</strong> — nodes are tainted (e.g. <code>node-role.kubernetes.io/control-plane</code>) and your pod has no matching toleration.</li>
+<li><strong>Node selector / affinity mismatch</strong> — the pod demands a label no node has.</li>
+<li><strong>PersistentVolumeClaim not bound</strong> — the pod needs a PVC that's stuck in <code>Pending</code>. Check <code>kubectl get pvc</code>; if the StorageClass can't provision, that's your real problem.</li>
+</ul>
+
+<p>For the "which node can run this" question, the scheduler's own tool is the fastest answer:</p>
+
+<pre><code>kubectl get nodes -o custom-columns=NAME:.metadata.name,CPU:.status.allocatable.cpu,MEM:.status.allocatable.memory</code></pre>
+
+<h2>5. Running But Broken: Connection and Config Issues</h2>
+
+<p>The pod is <code>Running</code>, but the app is failing. This is where you move from the pod layer to the app layer:</p>
+
+<pre><code># Get an interactive shell inside the container
+kubectl exec -it my-api-7d4f8b9c6c-xk9j2 -n myapp -- /bin/sh
+
+# Port-forward to reach a service from your laptop
+kubectl port-forward svc/my-api 8080:80 -n myapp
+
+# Copy a file out for inspection
+kubectl cp myapp/my-api-7d4f8b9c6c-xk9j2:/var/log/app.log ./app.log
+
+# Stream all logs from a deployment
+kubectl logs deploy/my-api -n myapp --tail=200 -f</code></pre>
+
+<p>When the app is up but can't reach its dependencies, work the connectivity chain:</p>
+<ol>
+<li><strong>Is DNS resolving?</strong> Inside the pod: <code>nslookup my-db.default.svc.cluster.local</code> or <code>getent hosts my-db</code>. If this fails, check CoreDNS: <code>kubectl get pods -n kube-system -l k8s-app=kube-dns</code> and <code>kubectl logs -n kube-system -l k8s-app=kube-dns --tail=50</code>.</li>
+<li><strong>Is the Service pointing at the right pods?</strong> <code>kubectl get endpoints my-api</code> — empty endpoints mean the selector doesn't match your pod labels. This is the #1 cause of "the service exists but nothing responds".</li>
+<li><strong>Is the NetworkPolicy blocking it?</strong> Check for NetworkPolicies in the namespace. A policy that allows only certain ingress can silently kill cross-namespace calls.</li>
+</ol>
+
+<h2>6. A Debugging Checklist for Incidents</h2>
+
+<p>When something breaks and you're under pressure, run this sequence top to bottom:</p>
+
+<pre><code>kubectl get events --sort-by=.lastTimestamp | tail -30
+kubectl get pods -A | grep -v Running
+kubectl describe pod &lt;pod&gt; | sed -n '/Events:/,$p'
+kubectl logs &lt;pod&gt; --previous
+kubectl get endpoints &lt;service&gt;
+kubectl get nodes</code></pre>
+
+<p>That's it. Six commands cover 90% of Kubernetes incidents: events, non-running pods, the pod's story, crash logs, service endpoints, and node health. Everything else is application-specific investigation.</p>
+
+<h2>7. Quick Wins to Prevent Future Debugging</h2>
+
+<p>A few habits that turn these hour-long firefights into five-minute confirmations:</p>
+<ul>
+<li><strong>Add a <code>startupProbe</code></strong> to every slow-starting app so liveness doesn't kill it during boot.</li>
+<li><strong>Set resource requests and limits</strong> on everything. Unbounded pods cause noisy-neighbor OOM kills that are miserable to diagnose.</li>
+<li><strong>Log to stdout/stderr</strong> so <code>kubectl logs</code> shows everything. Files in the container are invisible to the standard tools.</li>
+<li><strong>Tag images with real versions</strong>, never <code>latest</code>. "It worked yesterday" becomes a solvable git problem instead of a registry mystery.</li>
+</ul>
+
+<h2>Summary</h2>
+
+<p>Kubernetes debugging is pattern matching. <code>CrashLoopBackOff</code> → logs. <code>ImagePullBackOff</code> → describe + registry. <code>Pending</code> → describe + node capacity. "Running but broken" → exec, port-forward, endpoints, DNS. Start with <code>kubectl describe</code>, read the Events, and work outward from the pod.</p>
+
+<p>The next time a pod misbehaves, resist the urge to delete and recreate it. Recreating hides the evidence. Diagnose first — the Events section has already told you what's wrong, you just haven't read it yet.</p>
+
+</article>
+<footer><p>© 2026 DevOpsDaily · <a href="../index.html">Home</a></p></footer>
+</div>
+<script data-goatcounter="https://devopsdailyblog.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+</body>
+</html>
