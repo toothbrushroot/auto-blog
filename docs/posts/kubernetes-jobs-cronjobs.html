@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A practical guide to Kubernetes Jobs and CronJobs — one-shot tasks, parallel batch processing, cron scheduling, retry policies, and the production pitfalls that turn simple jobs into duplicate data and missed runs.">
+<title>Kubernetes Jobs &amp; CronJobs: Batch Processing Done Right - DevOpsDaily</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.8;font-size:1.05rem}
+.container{max-width:750px;margin:0 auto;padding:2rem 1rem}
+nav{margin-bottom:1rem}
+nav a{color:#58a6ff;text-decoration:none;font-size:.9rem}
+h1{font-size:2rem;color:#f0f6fc;margin:.5rem 0 1.5rem;line-height:1.3}
+.date{color:#8b949e;font-size:.9rem;margin-bottom:2rem}
+article h2{color:#f0f6fc;font-size:1.4rem;margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid #21262d}
+article h3{color:#f0f6fc;font-size:1.15rem;margin:1.5rem 0 .5rem}
+article p{margin-bottom:1rem;color:#b1bac4}
+article code{background:#21262d;padding:.15rem .4rem;border-radius:3px;font-size:.9rem;color:#ffa657}
+article pre{background:#161b22;border:1px solid #21262d;border-radius:6px;padding:1rem;overflow-x:auto;margin-bottom:1.5rem;font-size:.9rem}
+article pre code{background:none;padding:0;color:#c9d1d9}
+article a{color:#58a6ff}
+article ul,article ol{margin:0 0 1rem 1.5rem;color:#b1bac4}
+article li{margin-bottom:.3rem}
+article blockquote{border-left:3px solid #30363d;padding-left:1rem;color:#8b949e;margin-bottom:1rem;font-style:italic}
+footer{text-align:center;padding:2rem;color:#484f58;font-size:.85rem;border-top:1px solid #21262d;margin-top:3rem}
+footer a{color:#484f58}
+</style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Kubernetes Jobs & CronJobs: Batch Processing Done Right",
+  "description": "A practical guide to Kubernetes Jobs and CronJobs — one-shot tasks, parallel batch processing, cron scheduling, retry policies, and the production pitfalls that turn simple jobs into duplicate data and missed runs.",
+  "datePublished": "2026-08-19",
+  "dateModified": "2026-08-19",
+  "author": {"@type": "Organization", "name": "DevOpsDaily"},
+  "publisher": {"@type": "Organization", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"},
+  "url": "https://toothbrushroot.github.io/auto-blog/posts/kubernetes-jobs-cronjobs.html",
+  "isPartOf": {"@type": "Blog", "name": "DevOpsDaily", "url": "https://toothbrushroot.github.io/auto-blog/"}
+}
+</script>
+<meta property="og:title" content="Kubernetes Jobs &amp; CronJobs: Batch Processing Done Right">
+<meta property="og:description" content="A practical guide to Kubernetes Jobs and CronJobs — one-shot tasks, parallel batch processing, cron scheduling, retry policies, and the production pitfalls that turn simple jobs into duplicate data and missed runs.">
+<meta property="og:url" content="https://toothbrushroot.github.io/auto-blog/posts/kubernetes-jobs-cronjobs.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="DevOpsDaily">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Kubernetes Jobs &amp; CronJobs: Batch Processing Done Right">
+<meta name="twitter:description" content="A practical guide to Kubernetes Jobs and CronJobs — one-shot tasks, parallel batch processing, cron scheduling, retry policies, and production pitfalls.">
+<link rel="canonical" href="https://toothbrushroot.github.io/auto-blog/posts/kubernetes-jobs-cronjobs.html">
+</head>
+<body>
+<div class="container">
+<nav><a href="../index.html">← Back to DevOpsDaily</a></nav>
+<h1>Kubernetes Jobs &amp; CronJobs: Batch Processing Done Right</h1>
+<div class="date">August 19, 2026 · 8 min read</div>
+<article>
+
+<p>Your web app is a Deployment. Your databases are StatefulSets. But what about the work that runs once and exits — a database migration, a nightly report, a data backfill, a thumbnail render? If you wrap those in a Deployment, the pod restarts forever because the container exited. That's what <strong>Jobs</strong> are for: run to completion, then stop. And when the work needs to happen on a schedule, you wrap the Job in a <strong>CronJob</strong>.</p>
+
+<p>Jobs look simple. They're not. Get the retry policy wrong and you get duplicate data. Get the parallelism wrong and your cluster starves. Get the history limits wrong and your cluster fills with dead pods. Here's how to run batch workloads in Kubernetes without any of that.</p>
+
+<h2>1. What Is a Job?</h2>
+
+<p>A Job creates one or more pods and ensures a specified number of them <strong>complete successfully</strong>. When a pod exits with code 0, that work item is done. Unlike a Deployment, a Job does not keep pods running — it lets them finish and records the result.</p>
+
+<pre><code>apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pi
+spec:
+  template:
+    spec:
+      containers:
+      - name: pi
+        image: perl:5.34
+        command: ["perl", "-Mbignum=bpi", "-wle", "print bpi(2000)"]
+      restartPolicy: Never
+  backoffLimit: 4</code></pre>
+
+<p>The one rule that trips everyone up: <code>restartPolicy</code> must be <code>Never</code> or <code>OnFailure</code>. Jobs cannot use <code>Always</code> — that's the whole point. A container that exits is not a crash to heal, it's work that finished (or failed).</p>
+
+<pre><code># Watch the job and its pods
+kubectl get jobs
+kubectl get pods -l job-name=pi
+kubectl logs pi-xxxxx</code></pre>
+
+<h2>2. Retries, Timeouts, and Cleanup</h2>
+
+<p>Three fields control what happens when things go wrong — and they're the difference between a self-healing job and a stuck one:</p>
+
+<ul>
+<li><strong><code>backoffLimit</code></strong> — how many times the Job retries failed pods before being marked <code>Failed</code> (default 6). The retry backoff is exponential: 10s, 20s, 40s, capped at 6 minutes. Set this low for non-idempotent work.</li>
+<li><strong><code>activeDeadlineSeconds</code></strong> — a hard cap on the Job's total runtime. When it expires, running pods are terminated and the Job is marked <code>Failed</code>. This is your runaway-job insurance.</li>
+<li><strong><code>ttlSecondsAfterFinished</code></strong> — automatically deletes finished Jobs (stable since 1.21). Without it, completed Jobs and their pods accumulate forever. <code>0</code> deletes immediately; <code>86400</code> keeps it around for a day so you can inspect it.</li>
+</ul>
+
+<p>A production database migration with all three set:</p>
+
+<pre><code>apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migrate
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 86400
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: migrate
+        image: myapp:migrate-1.2.0
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: url</code></pre>
+
+<p>Backoff limited to 2 retries (a migration that fails three times will likely keep failing), hard-stopped after 10 minutes, and cleaned up a day after it finishes.</p>
+
+<h2>3. Parallel Jobs: Two Patterns</h2>
+
+<p>Sometimes one pod isn't enough. Jobs support two parallel models, and they solve different problems:</p>
+
+<p><strong>Fixed completion count</strong> — set <code>completions: 10</code> and <code>parallelism: 3</code>. The Job runs exactly 10 successful pods, up to 3 at a time. Use this when you know the work items in advance — render 10 reports, process 10 files.</p>
+
+<pre><code>spec:
+  completions: 10
+  parallelism: 3
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: render
+        image: myapp:renderer
+        command: ["render-report"]</code></pre>
+
+<p><strong>Work queue</strong> — set <code>parallelism: 5</code> with no <code>completions</code>. Each pod is a worker that pulls items from a queue (Redis, SQS, Kafka) until the queue is empty. A pod exiting 0 signals "no more work"; the Job finishes when every worker exits. Use this when you don't know the workload size in advance.</p>
+
+<p><strong>Pitfall:</strong> with a work queue, a crashed worker re-runs and re-pulls its item. If your consumer isn't idempotent, the retried pod duplicates the work. Design queue consumers to tolerate re-delivery — this is exactly the same guarantee model as SQS/Kafka at-least-once delivery.</p>
+
+<h2>4. CronJobs: Scheduled Jobs</h2>
+
+<p>A CronJob is a thin wrapper that creates a Job on a schedule (added in 1.8, stable in 1.21). A nightly backup:</p>
+
+<pre><code>apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nightly-backup
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: backup
+            image: postgres:15
+            command: ["pg_dump", "-Fc", "-f", "/backups/dump.gz"]</code></pre>
+
+<p>Key decisions in that YAML:</p>
+
+<ul>
+<li><strong><code>concurrencyPolicy</code></strong> — <code>Allow</code> (default) lets runs overlap, <code>Forbid</code> skips a run if the previous one is still going, <code>Replace</code> kills the running Job and starts a new one. For backups: <code>Forbid</code>. Two overlapping <code>pg_dump</code> runs are chaos.</li>
+<li><strong><code>startingDeadlineSeconds</code></strong> — if the controller was down (cluster upgrade, controller crash), missed runs older than this window are <em>skipped</em>, not queued. The controller will not fire 50 missed backups after a weekend outage — which is what you want for idempotent jobs. Just know that missed runs don't get retroactively executed.</li>
+<li><strong><code>successfulJobsHistoryLimit</code> / <code>failedJobsHistoryLimit</code></strong> — how many finished Jobs to keep around. The defaults are 3 and 1. Each CronJob run creates a Job, and every Job creates pods; unset limits mean your <code>kubectl get pods</code> output becomes a graveyard.</li>
+</ul>
+
+<p><strong>Time zones:</strong> CronJobs run in the kube-controller-manager's local time zone, which is usually UTC on managed clusters. If your team thinks in <code>Asia/Shanghai</code> or <code>America/New_York</code>, set <code>spec.timeZone</code> explicitly (Kubernetes 1.27+). Never assume the schedule matches your wall clock.</p>
+
+<h2>5. Production Pitfalls</h2>
+
+<ul>
+<li><strong>Cron is not precise.</strong> A schedule fires when the controller notices it, plus pod scheduling latency — seconds to minutes of jitter. Don't build a job that must run at 09:00:00.000.</li>
+<li><strong>Jobs are not idempotent by default.</strong> Your migration runs, fails at 90%, retries from scratch. If your SQL isn't safe to re-run, you get duplicate rows. Use versioned migration frameworks, dedupe keys, and make every batch job safe to run twice.</li>
+<li><strong>Flaky image pulls burn retries.</strong> With <code>imagePullPolicy: Always</code> and a flaky registry, <code>ImagePullBackOff</code> can exhaust your <code>backoffLimit</code> before the pod ever runs. It's not a code bug — but the Job still fails.</li>
+<li><strong>Parallelism without resource requests.</strong> A Job with <code>parallelism: 20</code> on a small cluster leaves everything else Pending — including your web tier. Set resource requests on Job pods and watch node capacity.</li>
+<li><strong><code>suspend: true</code></strong> (1.21+) pauses a CronJob without deleting it. Use it before maintenance windows instead of deleting and recreating the manifest.</li>
+</ul>
+
+<h2>6. Debugging Jobs</h2>
+
+<pre><code># Job-level status
+kubectl get jobs
+kubectl describe job db-migrate
+
+# Pod-level detail
+kubectl get pods -l job-name=db-migrate
+kubectl logs db-migrate-xxxxx
+
+# Why did it fail? Machine-readable conditions
+kubectl get job db-migrate -o jsonpath='{.status.conditions}'</code></pre>
+
+<p><code>describe job</code> shows the retry count and the reason a Job was marked failed. The pod events tell you whether it was a pull error, a crash, or a timeout. And if a Job is stuck in <code>Active</code> with zero pods, check the Job controller — the pods were probably evicted or never scheduled.</p>
+
+<h2>Summary</h2>
+
+<ul>
+<li><strong>Job</strong> — one-shot tasks that run to completion. Set <code>restartPolicy: Never</code>.</li>
+<li><strong>Parallel work</strong> — <code>completions</code> for known item counts, the queue pattern for unknown workloads. Make workers idempotent.</li>
+<li><strong>CronJob</strong> — scheduled Jobs. Set <code>concurrencyPolicy: Forbid</code> for anything that must not overlap, and cap the history limits.</li>
+<li><strong>Always</strong> — set <code>backoffLimit</code>, <code>activeDeadlineSeconds</code>, and <code>ttlSecondsAfterFinished</code> (or history limits). A Job without timeouts is a leak.</li>
+</ul>
+
+<p>Batch workloads are where Kubernetes quietly pays for itself — no servers to babysit, no crontab drift, and retries that actually retry. Configure them like the examples above and they run themselves. That's the point.</p>
+
+</article>
+<footer><p>© 2026 DevOpsDaily · <a href="../index.html">Home</a></p></footer>
+</div>
+<script data-goatcounter="https://devopsdailyblog.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+</body>
+</html>
